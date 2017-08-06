@@ -1,0 +1,559 @@
+#+TITLE: CL 3 Bootstrap 
+#+AUTHOR: Xt3
+
+* Bootstrap
+- Default Settings
+  - font-size 14px
+  - line-height 1.428
+  - <p> margin-bottom 10px
+* -----
+* Package
+#+BEGIN_SRC lisp
+(defpackage :xt3.bootstrap
+  (:use :cl))
+#+END_SRC
+* Help
+- join-class
+  #+BEGIN_SRC lisp
+;; Impl
+(defun join-class (cll)
+  "cll:str-list"
+  `(:class ,(join-string-list
+             (remove-if #'empty-str-p 
+                        cll))))
+
+;; Usage
+;; (join-class '("someone" "me you"))
+;;->
+;; (:CLASS "someone me you")
+  #+END_SRC
+- empty-str-p
+  #+BEGIN_SRC lisp
+(defun empty-str-p (str)
+  (string= str ""))
+  
+  #+END_SRC
+- empty-str-or
+  #+BEGIN_SRC lisp
+(defun empty-str-or (str &key restr (add "") (prefix t))
+  (cond
+    ((string= str "") "")
+    ((not (null restr)) restr)
+    ((null prefix) (concat str add))
+    (t (concat add str))))
+
+;; (empty-str-or "a")
+;;-> "a"
+;; (empty-str-or "a" :restr "b")
+;;-> "b"
+;; (empty-str-or "a"  :add "-no")
+;;-> "a-no"
+;; (empty-str-or "a" :add "no-" :prefix t)
+;;-> "no-a"
+
+
+  #+END_SRC
+- to-list
+  #+BEGIN_SRC lisp
+(defun to-list (item)
+  (if (listp item)
+      item
+      (list item)))
+  #+END_SRC
+* -----
+* Container
+- container
+  #+BEGIN_SRC lisp
+;; Impl
+(defun bs-container (&key items fluid class atts)
+  `(div (,@(join-class (if fluid
+                           "container-fluid"
+                           "container")
+                       class)
+           ,@atts)
+    ,@items))
+
+;; Usage
+;; (bs-container :fluid t
+;;               :class '("one two")
+;;               ;; :atts '(:id "i")
+;;               :items
+;;               '("hello"
+;;                 (h1 () "h1")
+;;                 (h3 () "h3")))
+;;-> 
+;; (DIV
+;;  (:CLASS "container-fluid one two"
+;;          :ID "i")
+;;  "hello"
+;;  (H1 NIL "h1")
+;;  (H3 NIL "h3"))
+
+  #+END_SRC
+
+* Grids
+- Size
+  - xs (for phones)
+  - sm (for tablets)
+  - md (for desktops)
+  - lg (for larger desktops)-
+- Impl
+  #+BEGIN_SRC lisp
+;; Impl
+(defun bs-row-col (&key items class atts (w '("md" "xs" "sm" "lg")) )
+  `(div (,@(join-class "row" class) ,@atts)
+        ,@(loop for i in items
+             collect (destructuring-bind (size content &key class atts) i
+                       (let ((att
+                              (join-string-list
+                               (mapcar (lambda (w s)
+                                         (format nil "col-~A-~A" w s))
+                                       w
+                                       (if (listp size)
+                                           size
+                                           (list size))))))
+                         `(div (,@(join-class att class) ,@atts)
+                               ,@content))))))
+
+
+;; Usage
+;; (bs-row-col :items '((3 ("a")) (3 ("b")) (3 ("c")) (3 ("d"))))
+;;->
+;; (DIV
+;;  (:CLASS "row")
+;;  (DIV (:CLASS "col-md-3") "a")
+;;  (DIV (:CLASS "col-md-3") "b")
+;;  (DIV (:CLASS "col-md-3") "c")
+;;  (DIV (:CLASS "col-md-3") "d"))
+
+;; (bs-row-col :items '((3 ("a") :class ("a"))
+;;                      (3 ("b") :atts (:id "bid"))
+;;                      (3 ("c"))
+;;                      (4 ((h1 () "d1")
+;;                          "d"
+;;                          (h2 () (a () "d2"))))))
+;;-> 
+;; (DIV
+;;  (:CLASS "row")
+;;  (DIV (:CLASS "col-md-3 a") "a")
+;;  (DIV
+;;   (:CLASS "col-md-3" :ID "bid")
+;;   "b")
+;;  (DIV (:CLASS "col-md-3") "c")
+;;  (DIV
+;;   (:CLASS "col-md-4")
+;;   (H1 NIL "d1")
+;;   "d"
+;;   (H2 NIL (A NIL "d2"))))
+
+;; (bs-row-col :items '(((3 4) ("a")) ((3 4) ("b")) ((6 4) ("c")))
+;;             :w '("md" "offset-md"))
+;;->
+;; (DIV
+;;  (:CLASS "row")
+;;  (DIV
+;;   (:CLASS "col-md-3 col-offset-md-4")
+;;   "a")
+;;  (DIV
+;;   (:CLASS "col-md-3 col-offset-md-4")
+;;   "b")
+;;  (DIV
+;;   (:CLASS "col-md-6 col-offset-md-4")
+;;   "c"))
+
+
+  
+  #+END_SRC
+
+* Table
+- style: (responsive striped bordered hover condensed)
+- Contextual: (active success info warning danger)
+- Impl
+  #+BEGIN_SRC lisp
+(defun bs-table (&key head body class atts style)
+  "style:(responsive striped bordered hover condensed)"
+  `(table (,@(join-class "table"
+                         (nconc
+                          (mapcar (lambda (s)
+                                    (concat "table-" s))
+                                  style)
+                          class))
+             ,@atts)
+          (thead ()
+                 (tr ()
+                     ,@(loop for i in head
+                          collect `(th () ,i))))
+          (tbody ()
+                 ,@(loop for r in body
+                      collect (destructuring-bind (&key row atts) r
+                                `(tr (,@atts)
+                                     ,@(loop for d in row
+                                          collect (destructuring-bind (&key col atts) d
+                                                    (if (listp col)
+                                                        `(td (,@atts) ,@col)
+                                                        `(td (,@atts) ,col))))))))))
+
+
+
+;; (bs-table :head '("one" "two" "three")
+;;           :style '("responsive" "striped" "bordered" "hover" "condensed")
+;;           :body '((:row ((:col "d1") (:col "d2") (:col "d3")))
+;;                   (:row ((:col "d1") (:col "d2") (:col "d3"))
+;;                    :atts (:class "cla"))
+;;                   (:row ((:col ("d1" "d11")) (:col "d2") (:col "d3"))
+;;                    :atts (:class "cla" :id "dd"))))
+;;->
+;; (TABLE (:CLASS "table")
+;;        (THEAD NIL
+;;               (TR NIL
+;;                   (TH NIL "one")
+;;                   (TH NIL "two")
+;;                   (TH NIL "three")))
+;;        (TBODY NIL
+;;               (TR NIL
+;;                (TD NIL "d1")
+;;                (TD NIL "d2")
+;;                (TD NIL "d3"))
+;;               (TR
+;;                (:CLASS "cla")
+;;                (TD NIL "d1")
+;;                (TD NIL "d2")
+;;                (TD NIL "d3"))
+;;               (TR
+;;                (:CLASS "cla" :ID "dd")
+;;                (TD NIL "d1" "d11")
+;;                (TD NIL "d2")
+;;                (TD NIL "d3"))))
+
+
+
+  #+END_SRC
+
+* Button
+** btn
+- btn
+  - (default primary success info warning danger link)
+  - (lg md sm xs)
+  - block
+- active
+- disabled
+#+BEGIN_SRC lisp
+(defun bs-btn (items &key sytle size class)
+"style:(default primary success info warning danger link)
+ size:(lg md sm xs)
+"
+  `(button
+    (:type "button"
+           :class ,(join-string-list
+                    `("btn"
+                      ,@(loop for i in (cons size style)
+                           collect (concat "btn" "-" i))
+                      ,class)))
+    ,@items))
+
+;; (bs-btn '("button")
+;;         :style '("default"))
+;;->
+;; (BUTTON
+;;  (:TYPE "button"
+;;         :CLASS "btn btn-default")
+;;  "button")
+
+#+END_SRC
+
+** Groups
+- <div> btn-group
+  - (lg sm xs)
+  - vertical
+  - justified (For <button> must wrap each button in btn-group)
+
+* GlyphIcon
+#+BEGIN_SRC lisp
+(defun bs-glyphicon (style)
+  `(span (:class ,#?"glyphicon glyphicon-${style}")))
+
+#+END_SRC
+
+* Progress
+#+BEGIN_SRC lisp
+(defun bs-progress (bars &key class atts)
+  `(div (:class ,(concat "progress" " " class) ,@atts)
+        ,@bars))
+
+(defun bs-progress-bar (items val &key sytle class)
+  "val:N% sytle:(success info warning danger | striped)"
+  `(div (:class ,(join-string-list
+                 `("progress-bar"
+                   ,@(loop for i in style
+                        collect #?"progress-bar-${i}")
+                   ,class))
+               :sytle #?"width:${val}")
+       ,@items))
+
+#+END_SRC
+
+* Pagination
+#+BEGIN_SRC lisp
+(defun bs-pagination (pages &key (class "") atts size)
+  `(ul (:class ,(join-string-list
+                 (remove-if #'empty-str-p 
+                            `("pagination"
+                              ,(if size
+                                  #?"pagination-${size}"
+                                  "")
+                             ,class))))
+       ,@(loop for i in pages
+            collect (destructuring-bind (page &key (href "#") class atts) i
+                      `(li (:class ,class ,@atts)
+                           (a (:href ,href) ,@page))))))
+
+;; (bs-pagination '(((1))
+;;                  ((2) :class "active")
+;;                  ((3) :class "disabled"))
+;;                :size "lg"
+;;                )
+;;-> 
+;; (UL
+;;  (:CLASS "pagination pagination-lg")
+;;  (LI
+;;   (:CLASS NIL)
+;;   (A (:HREF "#") 1))
+;;  (LI
+;;   (:CLASS "active")
+;;   (A (:HREF "#") 2))
+;;  (LI
+;;   (:CLASS "disabled")
+;;   (A (:HREF "#") 3)))
+#+END_SRC
+
+* Breadcrumbs
+#+BEGIN_SRC lisp
+(defun bs-breadcrumbs (pages &key (class "") atts)
+  `(ul (:class ,(join-string-list
+                 (remove-if #'empty-str-p 
+                            `("breadcrumbs"
+                             ,class))))
+       ,@(loop for i in pages
+            collect (destructuring-bind (page &key (href "#") class atts) i
+                      `(li (:class ,class ,@atts)
+                           (a (:href ,href) ,@page))))))
+
+;; (bs-breadcrumb '(((one))
+;;                  ((two) :class "active")
+;;                  ((three) :class "disabled")))
+#+END_SRC
+
+* Pager
+#+BEGIN_SRC lisp
+(defun bs-pager (&key prev next (class "") atts)
+  `(ul (:class ,(join-string-list
+                 (remove-if #'empty-str-p 
+                            `("pager"
+                             ,class))))
+       (li (:class "previous")
+           (a (:href ,(second prev)) ,(first prev)))
+       (li (:class "next")
+           (a (:href ,(second next)) ,(first next)))))
+
+#+END_SRC
+
+* ----- 以上需要重写
+* List Groups
+- li
+  #+BEGIN_SRC lisp
+(defun bs-lgroup-li (items &key (class "") atts)
+  `(ul (,@(join-class `("list-group" ,class)) ,@atts)
+       ,@(loop for i in items
+            collect (destructuring-bind (item &key (class "") atts (style "")) i
+                      `(li (,@(join-class `("list-group-item"
+                                            ,class
+                                            ,(empty-str-or style :add "list-group-item-")))
+                              ,@atts)
+                           ,@(to-list item))))))
+
+;; (bs-lgroup-li '((("one" (span (:class "badge") 3)))
+;;                 (2 :class "active" :style "success")
+;;                 (3 :class "disabled")))
+;;-> 
+;; (UL
+;;  (:CLASS "list-group")
+;;  (LI
+;;   (:CLASS "list-group-item")
+;;   "one"
+;;   (SPAN (:CLASS "badge") 3))
+;;  (LI
+;;   (:CLASS "list-group-item active list-group-item-success")
+;;   2)
+;;  (LI
+;;   (:CLASS "list-group-item disabled")
+;;   3))
+  #+END_SRC
+- a
+  #+BEGIN_SRC lisp
+(defun bs-lgroup-a (items &key (class "") atts)
+  `(div (,@(join-class `("list-group" ,class)) ,@atts)
+       ,@(loop for i in items
+            collect (destructuring-bind (item &key (class "") atts (style "") (href "#")) i
+                      `(a (,@(join-class `("list-group-item"
+                                           ,class
+                                           ,(empty-str-or style :add "list-group-item-")))
+                             :href ,href
+                             ,@atts)
+                           ,@(if (not (listp item)) (list item) item))))))
+
+  
+;; (bs-lgroup-a '(("one" :href "http://no.com")))
+;;-> 
+;; (DIV
+;;  (:CLASS "list-group")
+;;  (A
+;;   (:CLASS "list-group-item"
+;;           :HREF "http://no.com")
+;;   "one"))
+
+
+  #+END_SRC
+- Custom: (heading text)
+  #+BEGIN_SRC lisp
+(bs-lgroup-a '((((h4 (:class "list-group-item-heading") Heading)
+                 (p (:class "list-group-item-text") Text)))))
+  #+END_SRC
+
+* Panel
+- panel
+  #+BEGIN_SRC lisp
+(defun bs-panel (&key head body footer (class "") atts style)
+  (flet ((fn (part str)
+           (destructuring-bind
+                 (item &key (class "") atts) part
+             `(div (,@(join-class `(,(concat "panel-" str) ,class)) ,@atts)
+                   ,@(to-list item)))))
+    `(div (,@(join-class `("panel"
+                           ,(empty-str-or style :add "panel-")
+                           ,class))
+             ,@atts)
+          ,(if head (fn head "heading"))
+          ,(if footer (fn head "footer"))
+          ,(fn body "body"))))
+
+;; (bs-panel :style "default"
+;;           :head '("Heading")
+;;           :footer '("Footer")
+;;           :body '("Content"))
+;;-> 
+;; (DIV
+;;  (:CLASS "panel panel-default")
+;;  (DIV
+;;   (:CLASS "panel-heading")
+;;   "Heading")
+;;  (DIV
+;;   (:CLASS "panel-footer")
+;;   "Heading")
+;;  (DIV
+;;   (:CLASS "panel-body")
+;;   "Content"))
+
+
+  #+END_SRC
+- group : <div> panel-group  [<div> panel]+
+* -----
+* Waiting
+#+BEGIN_SRC lisp
+;; Carousel
+(defun bs-carousel(items)
+  `(div (:id "carousel-example-generic" :data-ride "carousel"
+             :class "carousel slide")
+        ,@(let ((ooo) (imgs) (count 0))
+            (loop for i in items
+               do (destructuring-bind (cap src &optional alt active) i
+                    (push `(li (:data-target "#carousel-example-generic"
+                                             :class ,(if active "active" "")
+                                             :data-slide-to ,count))
+                          ooo)
+                    (incf count)
+                    (push `(div (:class ,(concat "item"
+                                                 (if active " active" "")))
+                                (img (:alt ,(if alt alt "") :src ,src))
+                                (div (:class "carousel-caption") ,@cap))
+                          imgs)))
+            `(;; ooo
+              (ol (:class "carousel-indicators") ,@(nreverse ooo))
+              ;; img
+              (div (:role "listbox" :class "carousel-inner")
+                   ,@(nreverse imgs))))
+        ;; < >
+        (a (:href "#carousel-example-generic" :role "button" :class
+                  "left carousel-control" :data-slide "prev")
+           (span (:class "glyphicon glyphicon-chevron-left" :aria-hidden "true"))
+           (span (:class "sr-only") "Previous"))
+        (a (:href "#carousel-example-generic" :role "button"
+                  :class "right carousel-control" :data-slide "next")
+           (span (:class "glyphicon glyphicon-chevron-right"
+                         :aria-hidden "true"))
+           (span (:class "sr-only") "Next"))))
+
+;; Navbar
+(defun bs-navbar (items &key (brand "Brand") (fluid t) (class+ '("default")))
+  `(nav (:class ,(join-string-list `("navbar"
+                                     ,@(mapcar (lambda (x)
+                                                 (concat "navbar-" x))
+                                               class+))
+                                   :join " "))
+        (div (:class ,(concat "container" (if fluid "-fluid" "")))
+             (div (:class "navbar-header")
+                  (button ,'(:data-target "#bs-example-navbar-collapse-1"
+                             :data-toggle "collapse"
+                             :class "navbar-toggle collapsed"
+                             :type "button"
+                             :aria-expanded "false")
+                          (span (:class "sr-only") "Toggle navigation")
+                          (span (:class "icon-bar"))
+                          (span (:class "icon-bar"))
+                          (span (:class "icon-bar")))
+                  (a (:href "#" :class "navbar-brand") ,brand))
+             (div (:id "bs-example-navbar-collapse-1"
+                       :class "collapse navbar-collapse")
+                  (ul (:class "nav navbar-nav")
+                      ,(loop for i in items
+                          collect (cond
+                                    ((listp i)
+                                     (let ((one (first i)))
+                                       (if (listp one)
+                                           `(li ,one
+                                                (a (:href ,(or (third i)
+                                                               "#"))
+                                                   ,(second i)))
+                                           i)))
+                                    (t `(li () (a (:href "#") ,i))))))))))
+
+;; Dropdown
+(defun bs-dropdown (title items &key (type '(div button)) (id ""))
+  `(,(first type) (:class "dropdown")
+     ,(let ((tag (second type)))
+        `(,tag ,(case tag
+                 (button `(:type "button"
+                                :id ,id ; ??
+                                :class "btn btn-default dropdown-toggle"
+                                :data-toggle "dropdown"
+                                :aria-haspopup "true"
+                                :aria-expanded "true"))
+                 (a `(:href "#"
+                           :role "button"
+                           :class "dropdown-toggle"
+                           :data-toggle "dropdown"
+                           :aria-haspopup "true"
+                           :aria-expanded "false")))
+              ,title
+              (span (:class "caret"))))
+     (ul (:aria-labelledby ,id :class "dropdown-menu")
+         ,(loop for i in items
+             collect (cond
+                       ((equal i "-")
+                        '(li (:role "separator" :class "divider")))
+                       ((listp i)
+                        `(li () (a (:href ,(second i)) ,(first i))))
+                       (t `(li () (a (:href "#") ,i))))))))
+
+
+
+#+END_SRC

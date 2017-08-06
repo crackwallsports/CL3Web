@@ -1,0 +1,20 @@
+# -*- mode: gitignore; -*-
+
+## Emacs
+*~
+.#*
+
+
+## Common Lisp
+*.FASL
+*.fasl
+*.lisp-temp
+*.dx32fsl
+*.dx64fsl
+*.lx32fsl
+*.lx64fsl
+*.x86f
+
+
+## OSX
+*.DS_Store
