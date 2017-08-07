@@ -6,6 +6,11 @@
   - font-size 14px
   - line-height 1.428
   - <p> margin-bottom 10px
+- .sr-only : hide for all devices (- screen-reader)
+
+** Menus
+- <ul> [<li>]+
+- horizontal menu: list-inline 
 * -----
 * Package
 #+BEGIN_SRC lisp
@@ -229,43 +234,6 @@
 
   #+END_SRC
 
-* Button
-** btn
-- btn
-  - (default primary success info warning danger link)
-  - (lg md sm xs)
-  - block
-- active
-- disabled
-#+BEGIN_SRC lisp
-(defun bs-btn (items &key sytle size class)
-"style:(default primary success info warning danger link)
- size:(lg md sm xs)
-"
-  `(button
-    (:type "button"
-           :class ,(join-string-list
-                    `("btn"
-                      ,@(loop for i in (cons size style)
-                           collect (concat "btn" "-" i))
-                      ,class)))
-    ,@items))
-
-;; (bs-btn '("button")
-;;         :style '("default"))
-;;->
-;; (BUTTON
-;;  (:TYPE "button"
-;;         :CLASS "btn btn-default")
-;;  "button")
-
-#+END_SRC
-
-** Groups
-- <div> btn-group
-  - (lg sm xs)
-  - vertical
-  - justified (For <button> must wrap each button in btn-group)
 
 * GlyphIcon
 #+BEGIN_SRC lisp
@@ -358,6 +326,51 @@
 #+END_SRC
 
 * ----- 以上需要重写
+* Button
+** btn
+- btn
+  - (default primary success info warning danger link)
+  - (lg md sm xs)
+  - block
+- active
+- disabled
+#+BEGIN_SRC lisp
+(defun bs-btn (items &key (class "") atts (style "") (size "") (type "button"))
+  "style:(default primary success info warning danger link)
+   size:(lg md sm xs)
+   type:(button submit)"
+  `(button
+    (:type ,type
+           ,@(join-class `("btn"
+                           ,(empty-str-or style :add "btn-")
+                           ,(empty-str-or size :add "btn-")
+                           ,class))
+           ,@atts)
+    ,@(to-list items)))
+
+;; (bs-btn "button" :style "default")
+;;-> 
+;; (BUTTON (:TYPE "button" :CLASS "btn btn-default") "button")
+
+;; (bs-btn '("button"
+;;           (p () "btn")) :style "default" :size "sm")
+;;-> 
+;; (BUTTON
+;;  (:TYPE "button"
+;;         :CLASS "btn btn-default btn-sm")
+;;  "button"
+;;  (P NIL "btn"))
+
+
+
+#+END_SRC
+
+** Groups
+- <div> btn-group
+  - (lg sm xs)
+  - vertical
+  - justified (For <button> must wrap each button in btn-group)
+
 * List Groups
 - li
   #+BEGIN_SRC lisp
@@ -422,7 +435,7 @@
 * Panel
 - panel
   #+BEGIN_SRC lisp
-(defun bs-panel (&key head body footer (class "") atts style)
+(defun bs-panel (&key head body footer (class "") atts (style ""))
   (flet ((fn (part str)
            (destructuring-bind
                  (item &key (class "") atts) part
@@ -456,9 +469,313 @@
 
   #+END_SRC
 - group : <div> panel-group  [<div> panel]+
+
+* Dropdown
+- <div> dropdown
+  - <button> dropdown-toggel data-toggle="dropdown"
+    - <span> caret
+  - <ul> dropdown-menu [<li> <a>]+
+- d.b
+  #+BEGIN_SRC lisp
+(defun bs-dropdown (title menus &key (class "") atts (style "") (direction "down") (tag 'div))
+  `(,tag (,@(join-class `(,#?"drop${direction}" ,class)) ,@atts)
+         (button (,@(join-class `("btn"
+                                  ,(empty-str-or style :add "btn-")))
+                    :type "button" :data-toggle "dropdown")
+                 ,title
+                 (span (:class "caret")))
+         (ul (:class "dropdown-menu")
+             ,@(loop for i in menus
+                  collect (destructuring-bind
+                                (menu &key (class "") atts (href "#") header) i
+                            (cond
+                              ((equal menu :-) '(li (:class "divider")))
+                              (header `(li (:class "dropdown-header")
+                                           ,menu))
+                              (t `(li (:class ,class ,@atts)
+                                      (a (:href ,href)
+                                         ,@(to-list menu))))))))))
+  
+
+
+
+
+;; (bs-dropdown "Dropdown" 
+;;              '(("HTML")
+;;                (:-)
+;;                ("Header" :header t)
+;;                ("CSS" :class "active")
+;;                ("JS" :atts (:id "js")))
+;;              :style "primary")
+;;-> 
+;; (DIV (:CLASS "dropdown")
+;;      (BUTTON (:CLASS "btn btn-primary"
+;;                      :TYPE "button"
+;;                      :DATA-TOGGLE "dropdown")
+;;              "Dropdown"
+;;              (SPAN (:CLASS "caret")))
+;;      (UL (:CLASS "dropdown-menu")
+;;          (LI (:CLASS "")
+;;              (A (:HREF "#") "HTML"))
+;;          (LI (:CLASS "divider"))
+;;          (LI (:CLASS "dropdown-header")
+;;              "Header")
+;;          (LI (:CLASS "active")
+;;           (A (:HREF "#") "CSS"))
+;;          (LI (:CLASS "" :ID "js")
+;;           (A (:HREF "#") "JS"))))
+
+
+  #+END_SRC
+
+* Collapse
+- Toggle
+  - <button> data-toggle="collapse" data-target="#target"
+  - <a> data-toggle="collapse" href="#target"
+- Target: <div> collapse id="target"
+- collapse [in]
+  #+BEGIN_SRC lisp
+(defun bs-collapse-a (title target &key (class "") atts )
+  `(a (:data-toggle "collapse" :href ,target ,@atts)
+      ,@(to-list title)))
+
+(defun bs-collapse-btn (title target &key (class "") atts )
+  `(button (:data-toggle "collapse" :data-target ,target ,@atts)
+           ,@(to-list title)))
+
+(defun bs-collapse-tg (id content &key (class "") atts )
+  `(div (:id ,id ,@(join-class `("collapse" ,class)) ,@atts)
+        ,@(to-list content)))
+
+  #+END_SRC
+
+
+** panel
+- Panel
+  - heading title {Collapse-a}
+  - <div> collapse  panel-collapse
+    - boody
+    - footer
+
+** list group
+
+* Tabs | Pills
+- <ul> nav nav-tabs [<li> <a>]+
+  #+BEGIN_SRC lisp
+(defun bs-tabs (tabs &key (class "") atts align toggle)
+  "align:(justified)"
+  `(ul (,@(join-class `("nav nav-tabs"
+                        ,(empty-str-or align :add "nav-")
+                        ,class))
+          ,@atts)
+       ,@(loop for i in tabs
+            collect
+              (destructuring-bind
+                    (item &key (class "") atts (href "#") sp) i
+                (if sp
+                    item
+                    `(li (,@(join-class `("" ,class)) ,@atts)
+                         ,(if toggle
+                              `(a (:href ,href :data-toggle "tab")
+                                  ,@(to-list item))
+                              `(a (:href ,href)
+                                  ,@(to-list item)))))))))
+  
+
+;; (bs-tabs `(("one")
+;;            ("two")
+;;            (,(bs-dropdown "dp" '((1) (2) (3)) :tag 'li) :sp t)
+;;            ("three")))
+;;-> 
+;; (UL (:CLASS "nav nav-tabs")
+;;     (LI (:CLASS "")
+;;         (A (:HREF "#") "one"))
+;;     (LI (:CLASS "")
+;;         (A (:HREF "#") "two"))
+;;     (LI (:CLASS "dropdown")
+;;         (BUTTON (:CLASS "btn"
+;;                         :TYPE "button"
+;;                         :DATA-TOGGLE "dropdown")
+;;                 "dp"
+;;                 (SPAN (:CLASS "caret")))
+;;         (UL (:CLASS "dropdown-menu")
+;;             (LI (:CLASS "")
+;;                 (A (:HREF "#") 1))
+;;             (LI (:CLASS "")
+;;                 (A (:HREF "#") 2))
+;;             (LI (:CLASS "")
+;;                 (A (:HREF "#") 3))))
+;;     (LI (:CLASS "")
+;;         (A (:HREF "#") "three")))
+
+;; (bs-tabs `(("one" :href "#one")
+;;            ("two" :href "#two")
+;;            ("three" :href "#three"))
+;;          :toggle t)
+
+(defun bs-tab-content (items &key (class "") atts )
+  `(div (,@(join-class `("tab-content" ,class)) ,@atts)
+      ,@(loop for i in items
+           collect
+             (destructuring-bind
+                   (item &key (class "") atts id) i
+               `(div (:id ,id ,@(join-class `("tab-pane" ,class)) ,@atts)
+                     ,@(to-list item))))))
+
+;; (bs-tab-content '((((h3 () "one")
+;;                     (p () "content"))
+;;                    :id "one" :class "fade in active")
+;;                   (((h3 () "two")
+;;                     (p () "content"))
+;;                    :id "two" :class "fade")
+;;                   (((h3 () "three")
+;;                     (p () "content"))
+;;                    :id "three" :class "fade")))
+
+  #+END_SRC
+- <ul> nav nav-pills [<li> <a>]+
+  #+BEGIN_SRC lisp
+(defun bs-pills (pills &key (class "") atts (align "") stacked toggle)
+  "align:(justified)"
+  `(ul (,@(join-class `("nav nav-pills"
+                        ,(empty-str-or align :add "nav-")
+                        ,(if stacked "nav-stacked" "")
+                        ,class))
+          ,@atts)
+       ,@(loop for i in tabs
+            collect
+              (destructuring-bind
+                    (item &key (class "") atts (href "#") sp) i
+                (if sp
+                    item
+                    `(li (,@(join-class `("" ,class)) ,@atts)
+                         ,(if toggle
+                              `(a (:href ,href :data-toggle "tab")
+                                  ,@(to-list item))
+                              `(a (:href ,href)
+                                  ,@(to-list item)))))))))
+  #+END_SRC
+
+
+** Toggle
+#+BEGIN_SRC lisp
+(defun bs-tab-content (items &key (class "") atts )
+  `(div (,@(join-class `("tab-content" ,class)) ,@atts)
+      ,@(loop for i in items
+           collect
+             (destructuring-bind
+                   (item &key (class "") atts id) i
+               `(div (:id ,id ,@(join-class `("tab-pane" ,class)) ,@atts)
+                     ,@(to-list item))))))
+
+;; (bs-tab-content '((((h3 () "one")
+;;                     (p () "content"))
+;;                    :id "one" :class "fade in active")
+;;                   (((h3 () "two")
+;;                     (p () "content"))
+;;                    :id "two" :class "fade")
+;;                   (((h3 () "three")
+;;                     (p () "content"))
+;;                    :id "three" :class "fade")))
+
+#+END_SRC
+
+* Navigation Bars
+- <nav> navbar navbar-default [navbar-fixed-[...]]
+  - container[-fluid]
+    - navbar-header
+      - navbar-brand
+    - <ul> nav navbar-nav [<li> ..]+
+- navbar
+  #+BEGIN_SRC lisp
+(defun bs-navbar (navs &key brand (class "") atts (style "default") fluid (fixed ""))
+  "style:(default inverse) fixed:(top bottom)"
+  `(div (,@(join-class `("navbar"
+                         ,(empty-str-or style :add "navbar-")
+                         ,(empty-str-or fixed :add "navbar-fixed-")
+                         ,class))
+           ,@atts)
+        (div (:class ,(concat "container" (if fluid "-fluid" "")))
+             (div (:class "navbar-header")
+                  ,@(to-list brand))
+             ,@navs)))
+
+(defun bs-nav (items &key (class "") atts (align ""))
+  "align:(right left)"
+  `(ul (,@(join-class `("nav navbar-nav"
+                         ,(empty-str-or align :add "navbar-")
+                         ,class)))
+        ,@(loop for i in items
+             collect
+               (destructuring-bind
+                     (item &key (class "") atts (href "#") sp) i
+                 (if sp
+                     item
+                     `(li (,@(join-class `("" ,class)) ,@atts)
+                          (a (:href ,href)
+                             ,@(to-list item))))))))
+
+(defun bs-nav-collapse (target &key (icons 3))
+  `(button (:class "navbar-toggle"
+                   :type "button"
+                   :data-toggle "collapse"
+                   :data-target ,target)
+        ,@(loop repeat icons
+             collect '(span (:class "icon-bar")))))
+
+;; (bs-nav-collapse "#ene" :icons 5)
+
+
+;; (bs-navbar `("navbar") :fixed "bottom")
+;; (bs-navbar `(,(bs-nav `((1)
+;;                         (2)
+;;                         (,(bs-dropdown "dd" '((1) (2)) :tag 'li) :sp t)))
+;;               ,(bs-nav '((1) (2)) :align "right")
+;;               ,(bs-btn '("button") :style "danger" :class "navbar-btn")
+;;               (p (:class "navbar-text") "text" ))
+;;            :brand '((a (:class "navbar-brand" :href "#") "Home")))
+
+;; (bs-navbar `((div (:class "collapse navbar-collapse" :id "myNB")
+;;                   ,(bs-nav '((1)
+;;                              (2)))))
+;;            :brand `(,(bs-nav-collapse "#myNB")
+;;                      (a (:class "navbar-brand" :href "#") "Home")))
+
+  #+END_SRC
+
+* Form
+- .form-control : width 100%  (input textarea select)
+- Layout
+  - Vertical (default)
+  - Horizontal
+    - <label> control-label
+  - Inline
+- <form> [form-inline|horizontal]
+  - [form-group]+
+  - Other
+- Maybe
+  #+BEGIN_SRC lisp
+(bs-form `(,(bs-form-group
+             `((label (:class "control-label" :for "name") "label")
+               ,(bs-input "input" :type "test" :form t )))
+            ,(bs-form-group)
+            ,(bs-form-group)) :style "horizontal")
+  
+  #+END_SRC
 * -----
 * Waiting
 #+BEGIN_SRC lisp
+;; Base 
+(defun bs-base (items &key (class "") atts )
+  `(div (,@(join-class `("" ,class)) ,@atts)
+      ,@(loop for i in items
+           collect
+             (destructuring-bind
+                   (item &key (class "") atts ) i
+               `(div (,@(join-class `("" ,class)) ,@atts)
+                     ,@(to-list item))))))
+
+
 ;; Carousel
 (defun bs-carousel(items)
   `(div (:id "carousel-example-generic" :data-ride "carousel"
@@ -491,68 +808,6 @@
            (span (:class "glyphicon glyphicon-chevron-right"
                          :aria-hidden "true"))
            (span (:class "sr-only") "Next"))))
-
-;; Navbar
-(defun bs-navbar (items &key (brand "Brand") (fluid t) (class+ '("default")))
-  `(nav (:class ,(join-string-list `("navbar"
-                                     ,@(mapcar (lambda (x)
-                                                 (concat "navbar-" x))
-                                               class+))
-                                   :join " "))
-        (div (:class ,(concat "container" (if fluid "-fluid" "")))
-             (div (:class "navbar-header")
-                  (button ,'(:data-target "#bs-example-navbar-collapse-1"
-                             :data-toggle "collapse"
-                             :class "navbar-toggle collapsed"
-                             :type "button"
-                             :aria-expanded "false")
-                          (span (:class "sr-only") "Toggle navigation")
-                          (span (:class "icon-bar"))
-                          (span (:class "icon-bar"))
-                          (span (:class "icon-bar")))
-                  (a (:href "#" :class "navbar-brand") ,brand))
-             (div (:id "bs-example-navbar-collapse-1"
-                       :class "collapse navbar-collapse")
-                  (ul (:class "nav navbar-nav")
-                      ,(loop for i in items
-                          collect (cond
-                                    ((listp i)
-                                     (let ((one (first i)))
-                                       (if (listp one)
-                                           `(li ,one
-                                                (a (:href ,(or (third i)
-                                                               "#"))
-                                                   ,(second i)))
-                                           i)))
-                                    (t `(li () (a (:href "#") ,i))))))))))
-
-;; Dropdown
-(defun bs-dropdown (title items &key (type '(div button)) (id ""))
-  `(,(first type) (:class "dropdown")
-     ,(let ((tag (second type)))
-        `(,tag ,(case tag
-                 (button `(:type "button"
-                                :id ,id ; ??
-                                :class "btn btn-default dropdown-toggle"
-                                :data-toggle "dropdown"
-                                :aria-haspopup "true"
-                                :aria-expanded "true"))
-                 (a `(:href "#"
-                           :role "button"
-                           :class "dropdown-toggle"
-                           :data-toggle "dropdown"
-                           :aria-haspopup "true"
-                           :aria-expanded "false")))
-              ,title
-              (span (:class "caret"))))
-     (ul (:aria-labelledby ,id :class "dropdown-menu")
-         ,(loop for i in items
-             collect (cond
-                       ((equal i "-")
-                        '(li (:role "separator" :class "divider")))
-                       ((listp i)
-                        `(li () (a (:href ,(second i)) ,(first i))))
-                       (t `(li () (a (:href "#") ,i))))))))
 
 
 
