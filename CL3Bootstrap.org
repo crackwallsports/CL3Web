@@ -755,13 +755,252 @@
   - Other
 - Maybe
   #+BEGIN_SRC lisp
-(bs-form `(,(bs-form-group
-             `((label (:class "control-label" :for "name") "label")
-               ,(bs-input "input" :type "test" :form t )))
-            ,(bs-form-group)
-            ,(bs-form-group)) :style "horizontal")
+;; NO
+;; (bs-form `(,(bs-form-group
+;;              `((label (:class "control-label" :for "name") "label")
+;;                ,(bs-input "input" :type "test" :form t )))
+;;             ,(bs-form-group))
+;;          :style "horizontal")
   
   #+END_SRC
+
+* Input group
+- Icon+Input
+  #+BEGIN_SRC lisp
+(defun bs-icon-input (icon id name &key (type "text") (ph name) reverse)
+  (let ((content `((span (:class "input-group-addon")
+                         (i (:class ,#?"glyphicon glyphicon-${icon}")))
+                   (input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph)))))
+    (if reverse (setf content (nreverse content)))
+    `(div (:class "input-group")
+          ,@content)))
+
+;; (bs-icon-input "user" "uname" "username" :reverse t)
+
+  #+END_SRC
+
+* Media Object
+#+BEGIN_SRC lisp
+(defun bs-media (&key left body right  (class "") atts)
+  "position:(top middle bottom)"
+  (flet ((fn (item side)
+           (destructuring-bind (obj &key (pos "") (class "") atts) item
+             `(div (,@(join-class `(,(concat "media-" side)
+                                    ,(empty-str-or pos :add "media-")
+                                    ,class))
+                      ,@atts)
+                   ,@(to-list obj))))) ;; ? add-class obj "media-object"
+    `(div (,@(join-class `("media" ,class)) ,@atts)
+          ,(if left (fn left "left")) 
+          (div (:class "media-body") ,@body) ;; ? add-first-class "media-heading"
+          ,(if right (fn right "right")))))
+
+
+;; (bs-media :left '(((img (:class "media-object" :src "img.jpg") ))
+;;                   :pos "top")
+;;           :body '((h3 (:class "media-heading") "One")
+;;                   (p () "PPPPP"))
+;;           :right  '(((img (:class "media-object" :src "img.jpg") )
+;;                      (p () "ppp"))
+;;                     :pos "bottom"))
+;;-> 
+;; (DIV (:CLASS "media")
+;;      (DIV (:CLASS "media-left media-top")
+;;           (IMG (:CLASS "media-object" :SRC "img.jpg")))
+;;      (DIV (:CLASS "media-body")
+;;           (H3 (:CLASS "media-heading")
+;;               "One")
+;;           (P NIL "PPPPP"))
+;;      (DIV (:CLASS "media-right media-bottom")
+;;           (IMG (:CLASS "media-object" :SRC "img.jpg"))
+;;           (P NIL "ppp")))
+
+;; (bs-media
+;;  :left '(((img (:class "media-object" :src "img.jpg") ))
+;;          :pos "top")
+;;  :body `(,(bs-media
+;;            :left '(((img (:class "media-object" :src "img.jpg") ))
+;;                    :pos "top")
+;;            :body '((h3 (:class "media-heading") "One")
+;;                    (p () "PPPPP")))))
+;;-> 
+;; (DIV (:CLASS "media")
+;;      (DIV (:CLASS "media-left media-top")
+;;           (IMG (:CLASS "media-object"
+;;                        :SRC "img.jpg")))
+;;      (DIV (:CLASS "media-body")
+;;           (DIV (:CLASS "media")
+;;                (DIV (:CLASS "media-left media-top")
+;;                     (IMG (:CLASS "media-object" :SRC "img.jpg")))
+;;                (DIV
+;;                 (:CLASS "media-body")
+;;                 (H3 (:CLASS "media-heading")
+;;                     "One")
+;;                 (P NIL "PPPPP"))
+;;                NIL))
+;;      NIL)
+
+#+END_SRC
+
+* Carousel
+#+BEGIN_SRC lisp
+(defun bs-carousel (id items &key (class "") atts )
+  (let ((ooo) (slides) (count 0))
+    (loop for i in items
+       do (destructuring-bind (item &key (class "") atts active caption) i
+            (push `(li (:data-target ,#?"#${id}"
+                                     :class ,(if active "active" "")
+                                     :data-slide-to ,count))
+                  ooo)
+            (incf count)
+            (push `(div (,@(join-class `("item"
+                                         ,(if active "active" "")
+                                         ,class))
+                           ,@atts)
+                        ,item
+                        ,(if caption
+                             `(div (:class "carousel-caption") ,@caption)))
+                  slides)))
+    `(div (,@(join-class `("carousel" ,class))
+             :data-ride "carousel"
+             :id ,id
+             ,@atts)
+          ;; ooo 
+          (ol (:class "carousel-indicators") ,@(nreverse ooo))
+          ;; Slides
+          (div (:class "carousel-inner")
+               ,@(nreverse slides))
+          ;; < >
+          ,@(flet ((ctr (side slide title)
+                   `(a (:href ,#?"#${id}" 
+                              :class ,(concat side " " "carousel-control")
+                              :data-slide ,slide)
+                       (span (:class ,#?"glyphicon glyphicon-chevron-${side}"))
+                       (span (:class "sr-only") ,title))))
+            (list (ctr "left" "prev" "Previous")
+                  (ctr "right" "next" "Next"))))))
+
+
+;; Usage
+;; (bs-carousel
+;;  "carl"
+;;  '(((img (:src "" :alt "")))
+;;    ((img (:src "" :alt "")) :active t)
+;;    ((img (:src "" :alt ""))
+;;     :caption ((h3 () "h3")
+;;               (p () "pp")))
+;;    ("hh")))
+;;-> 
+;; (DIV (:CLASS "carousel" :DATA-RIDE "carousel" :ID "carl")
+;;      (OL (:CLASS "carousel-indicators")
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 0))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "active" :DATA-SLIDE-TO 1))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 2))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 3)))
+;;      (DIV (:CLASS "carousel-inner")
+;;           (DIV (:CLASS "item")
+;;                (IMG (:SRC "" :ALT ""))
+;;                NIL)
+;;           (DIV (:CLASS "item active")
+;;                (IMG (:SRC "" :ALT ""))
+;;                NIL)
+;;           (DIV (:CLASS "item")
+;;                (IMG (:SRC "" :ALT ""))
+;;                (DIV (:CLASS "carousel-caption")
+;;                     (H3 NIL "h3")
+;;                     (P NIL "pp")))
+;;           (DIV (:CLASS "item") "hh" NIL))
+;;      (A (:HREF "#carl" :CLASS "left carousel-control" :DATA-SLIDE "prev")
+;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-left"))
+;;         (SPAN (:CLASS "sr-only") "Previous"))
+;;      (A (:HREF "#carl" :CLASS "right carousel-control" :DATA-SLIDE "next")
+;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-right"))
+;;         (SPAN (:CLASS "sr-only") "Next")))
+
+
+
+
+#+END_SRC
+
+* Modal
+- modal
+  - -dialog
+    - -header
+      - [<button> close data-dismiss="modal" > &times;]
+      - -title
+    - -body
+    - -footer
+      - [<button> data-dismiss="modal"]
+
+
+#+BEGIN_SRC lisp
+
+(bs-btn '("Open Model") :style "info" :size "lg" :atts '(:data-toggle "modal" :data-target "#myModal"))
+
+(defun bs-modal (id items &key header body footer (class "") atts (effect "fade") (size "") )
+  `(div (:id ,id
+         ,@(join-class `("modal" ,effect ,class)) 
+         ,@atts)
+        (div (,@(join-class `("model-dialog"
+                              ,(empty-str-or size :add "modal-"))))
+             (div (:class "modal-content")
+                  ,(if header 
+                       `(div (:class "modal-header")
+                             (button (:class "close"
+                                             :type "button"
+                                             :data-dismiss "modal")
+                                     "&times;")
+                             ,@header))
+                  ,(if body 
+                       `(div (:class "modal-body")
+                             ,@body))
+                  ,(if footer 
+                       `(div (:class "modal-footer")
+                             ,@footer
+                             (button (:class "btn btn-default"
+                                             :type "button"
+                                             :data-dismiss "modal")
+                                     "Close")))))))
+;; Maybe
+;; (defun ->bs-modal (id)
+;;   `((bs-btn ("Open Model") :style "info" :size "lg"
+;;             :atts (:data-toggle "modal" :data-target ,#?"#${id}"))
+;;     (bs-modal id)))
+#+END_SRC
+
+* Tooltip
+- data-toggel="tooltip" data-placement="top|bottom|left|right" title="aaa"
+- script
+  #+BEGIN_SRC html
+<script>
+$(document).ready(function(){
+    $('[data-toggle="tooltip"]').tooltip(); 
+});
+</script>  
+  #+END_SRC
+* Popover
+- title="Header" data-toggle="popover" data-placement="top|.." data-content="Content"
+- title="Dismissible popover" data-toggle="popover" data-trigger="focus|hover" data-content="Click Other close"
+- script
+  #+BEGIN_SRC html
+<script>
+$(document).ready(function(){
+    $('[data-toggle="popover"]').popover();   
+});
+</script>  
+  #+END_SRC
+* Scrollspy
+- <body> data-spy="scroll" data-target=".navbar" data-offset="50"
+  - [navbar <li><a> href="#section1"]+
+  - [<div> id=section1]+
+- Vertical
+  - <body> data-spy="scroll" data-target="#myScrollspy" data-offset="20"
+    - [<nav> id=myScrollspy <li><a> href="#section1" ]+
+    - [<div> id=section1]+
+* Affix
+- <nav> navbar navbar-inverse data-spy="affix" data-offset-top="197"
+- <ul> nav nav-pills nav-stacked data-spy="affix" data-offset-top="205"
+
 * -----
 * Waiting
 #+BEGIN_SRC lisp
