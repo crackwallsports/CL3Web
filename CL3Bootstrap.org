@@ -7,169 +7,78 @@
   - line-height 1.428
   - <p> margin-bottom 10px
 - .sr-only : hide for all devices (- screen-reader)
+- Size
+  - xs (for phones)
+  - sm (for tablets)
+  - md (for desktops)
+  - lg (for larger desktops)-
+
+** Jumbotron
+- <div> jumbotron
 
 ** Menus
 - <ul> [<li>]+
 - horizontal menu: list-inline 
 * -----
 * Package
-#+BEGIN_SRC lisp
+#+BEGIN_SRC lisp :tangle yes
+(in-package :cl-user)
 (defpackage :xt3.bootstrap
   (:use :cl))
+(in-package :xt3.bootstrap)
 #+END_SRC
 * Help
-- join-class
-  #+BEGIN_SRC lisp
-;; Impl
+** join-class
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
 (defun join-class (cll)
   "cll:str-list"
   `(:class ,(join-string-list
              (remove-if #'empty-str-p 
                         cll))))
-
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
 ;; Usage
-;; (join-class '("someone" "me you"))
+(join-class '("someone" "me you"))
 ;;->
 ;; (:CLASS "someone me you")
-  #+END_SRC
-- empty-str-p
-  #+BEGIN_SRC lisp
-(defun empty-str-p (str)
-  (string= str ""))
   
   #+END_SRC
-- empty-str-or
-  #+BEGIN_SRC lisp
+** empty-str-p
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun empty-str-p (str)
+  (string= str ""))
+  #+END_SRC
+** empty-str-or
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
 (defun empty-str-or (str &key restr (add "") (prefix t))
   (cond
     ((string= str "") "")
     ((not (null restr)) restr)
     ((null prefix) (concat str add))
     (t (concat add str))))
-
-;; (empty-str-or "a")
-;;-> "a"
-;; (empty-str-or "a" :restr "b")
-;;-> "b"
-;; (empty-str-or "a"  :add "-no")
-;;-> "a-no"
-;; (empty-str-or "a" :add "no-" :prefix t)
-;;-> "no-a"
-
-
   #+END_SRC
-- to-list
+- Usage
   #+BEGIN_SRC lisp
+(empty-str-or "a")
+;;-> "a"
+(empty-str-or "a" :restr "b")
+;;-> "b"
+(empty-str-or "a"  :add "-no")
+;;-> "a-no"
+(empty-str-or "a" :add "no-" :prefix t)
+;;-> "no-a"  
+  #+END_SRC
+** to-list
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
 (defun to-list (item)
-  (if (listp item)
-      item
-      (list item)))
+  (if (listp item) item (list item)))
   #+END_SRC
 * -----
-* Container
-- container
-  #+BEGIN_SRC lisp
-;; Impl
-(defun bs-container (&key items fluid class atts)
-  `(div (,@(join-class (if fluid
-                           "container-fluid"
-                           "container")
-                       class)
-           ,@atts)
-    ,@items))
-
-;; Usage
-;; (bs-container :fluid t
-;;               :class '("one two")
-;;               ;; :atts '(:id "i")
-;;               :items
-;;               '("hello"
-;;                 (h1 () "h1")
-;;                 (h3 () "h3")))
-;;-> 
-;; (DIV
-;;  (:CLASS "container-fluid one two"
-;;          :ID "i")
-;;  "hello"
-;;  (H1 NIL "h1")
-;;  (H3 NIL "h3"))
-
-  #+END_SRC
-
-* Grids
-- Size
-  - xs (for phones)
-  - sm (for tablets)
-  - md (for desktops)
-  - lg (for larger desktops)-
-- Impl
-  #+BEGIN_SRC lisp
-;; Impl
-(defun bs-row-col (&key items class atts (w '("md" "xs" "sm" "lg")) )
-  `(div (,@(join-class "row" class) ,@atts)
-        ,@(loop for i in items
-             collect (destructuring-bind (size content &key class atts) i
-                       (let ((att
-                              (join-string-list
-                               (mapcar (lambda (w s)
-                                         (format nil "col-~A-~A" w s))
-                                       w
-                                       (if (listp size)
-                                           size
-                                           (list size))))))
-                         `(div (,@(join-class att class) ,@atts)
-                               ,@content))))))
-
-
-;; Usage
-;; (bs-row-col :items '((3 ("a")) (3 ("b")) (3 ("c")) (3 ("d"))))
-;;->
-;; (DIV
-;;  (:CLASS "row")
-;;  (DIV (:CLASS "col-md-3") "a")
-;;  (DIV (:CLASS "col-md-3") "b")
-;;  (DIV (:CLASS "col-md-3") "c")
-;;  (DIV (:CLASS "col-md-3") "d"))
-
-;; (bs-row-col :items '((3 ("a") :class ("a"))
-;;                      (3 ("b") :atts (:id "bid"))
-;;                      (3 ("c"))
-;;                      (4 ((h1 () "d1")
-;;                          "d"
-;;                          (h2 () (a () "d2"))))))
-;;-> 
-;; (DIV
-;;  (:CLASS "row")
-;;  (DIV (:CLASS "col-md-3 a") "a")
-;;  (DIV
-;;   (:CLASS "col-md-3" :ID "bid")
-;;   "b")
-;;  (DIV (:CLASS "col-md-3") "c")
-;;  (DIV
-;;   (:CLASS "col-md-4")
-;;   (H1 NIL "d1")
-;;   "d"
-;;   (H2 NIL (A NIL "d2"))))
-
-;; (bs-row-col :items '(((3 4) ("a")) ((3 4) ("b")) ((6 4) ("c")))
-;;             :w '("md" "offset-md"))
-;;->
-;; (DIV
-;;  (:CLASS "row")
-;;  (DIV
-;;   (:CLASS "col-md-3 col-offset-md-4")
-;;   "a")
-;;  (DIV
-;;   (:CLASS "col-md-3 col-offset-md-4")
-;;   "b")
-;;  (DIV
-;;   (:CLASS "col-md-6 col-offset-md-4")
-;;   "c"))
-
-
-  
-  #+END_SRC
-
 * Table
 - style: (responsive striped bordered hover condensed)
 - Contextual: (active success info warning danger)
@@ -233,14 +142,6 @@
 
 
   #+END_SRC
-
-
-* GlyphIcon
-#+BEGIN_SRC lisp
-(defun bs-glyphicon (style)
-  `(span (:class ,#?"glyphicon glyphicon-${style}")))
-
-#+END_SRC
 
 * Progress
 #+BEGIN_SRC lisp
@@ -326,15 +227,44 @@
 #+END_SRC
 
 * ----- 以上需要重写
+* Container
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-container (items &key fluid (class "") atts)
+  `(div (,@(join-class `(,(if fluid
+                              "container-fluid"
+                              "container")
+                          ,class))
+           ,@atts)
+        ,@(to-list items)))
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+;; Usage
+(bs-container '("hello"
+                (h1 () "h1")
+                (h3 () "h3"))
+              :fluid t
+              :class "one two")
+;;-> 
+;; (DIV
+;;  (:CLASS "container-fluid one two")
+;;  "hello"
+;;  (H1 NIL "h1")
+;;  (H3 NIL "h3"))
+  #+END_SRC
+
 * Button
-** btn
 - btn
   - (default primary success info warning danger link)
   - (lg md sm xs)
   - block
 - active
 - disabled
-#+BEGIN_SRC lisp
+
+** btn
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
 (defun bs-btn (items &key (class "") atts (style "") (size "") (type "button"))
   "style:(default primary success info warning danger link)
    size:(lg md sm xs)
@@ -347,13 +277,15 @@
                            ,class))
            ,@atts)
     ,@(to-list items)))
-
-;; (bs-btn "button" :style "default")
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-btn "button" :style "default")
 ;;-> 
 ;; (BUTTON (:TYPE "button" :CLASS "btn btn-default") "button")
 
-;; (bs-btn '("button"
-;;           (p () "btn")) :style "default" :size "sm")
+(bs-btn '("button"
+          (p () "btn")) :style "default" :size "sm")
 ;;-> 
 ;; (BUTTON
 ;;  (:TYPE "button"
@@ -361,16 +293,304 @@
 ;;  "button"
 ;;  (P NIL "btn"))
 
-
-
-#+END_SRC
+  
+  #+END_SRC
 
 ** Groups
 - <div> btn-group
   - (lg sm xs)
   - vertical
   - justified (For <button> must wrap each button in btn-group)
+* Input group
+** Icon+Input
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-icon-input (icon id name &key (type "text") (ph name) reverse)
+  (let ((content `((span (:class "input-group-addon")
+                         (i (:class ,#?"glyphicon glyphicon-${icon}")))
+                   (input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph)))))
+    (if reverse (setf content (nreverse content)))
+    `(div (:class "input-group")
+          ,@content)))
+  #+END_SRC
+** Input+Btn
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-input-btn (id name title &key (type "text") (ph name) reverse (btn-style "") (isize "50"))
+  (let ((content `((input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph :required "required" :size ,isize))
+                   (div (:class "input-group-btn")
+                        (button (:type "button"
+                                       ,@(join-class `("btn"
+                                                       ,(empty-str-or btn-style :add "btn-"))))
+                                ,title)))))
+    (if reverse (setf content (nreverse content)))
+    `(div (:class "input-group")
+          ,@content)))
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-input-btn "uemail" "uemail" "Subscribe"
+               :type "email"
+               :btn-style "danger"
+               :ph "Email Address")
+;;-> 
+;; (DIV
+;;  (:CLASS "input-group")
+;;  (INPUT
+;;   (:CLASS "form-control"
+;;           :ID "uemail"
+;;           :TYPE "email"
+;;           :NAME "uemail"
+;;           :PLACEHOLDER "Email Address"
+;;           :REQUIRED "required"))
+;;  (DIV
+;;   (:CLASS "input-group-btn")
+;;   (BUTTON
+;;    (:TYPE "button"
+;;           :CLASS "btn btn-danger")
+;;    "Subscribe")))  
+  #+END_SRC
 
+* Grids
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-row-col (items &key (class "") atts (w '("md" "xs" "sm" "lg")) )
+  `(div (,@(join-class `("row" ,class)) ,@atts)
+        ,@(loop for i in items
+             collect (destructuring-bind (size content &key (class "") atts) i
+                       (let ((att
+                              (join-string-list
+                               (mapcar (lambda (w s)
+                                         (format nil "col-~A-~A" w s))
+                                       w
+                                       (to-list size)))))
+                         `(div (,@(join-class `(,att ,class)) ,@atts)
+                               ,@(to-list content)))))))
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-row-col '((3 "a")
+              (3 ("b"))
+              (3 ("c"
+                  (h2 () "h2")))
+              (3 ("d"))))
+;;->
+;; (DIV (:CLASS "row")
+;;      (DIV (:CLASS "col-md-3") "a")
+;;      (DIV (:CLASS "col-md-3") "b")
+;;      (DIV (:CLASS "col-md-3")
+;;           "c"
+;;           (H2 NIL "h2"))
+;;      (DIV (:CLASS "col-md-3") "d"))
+
+
+(bs-row-col '(((3 4) "a")
+              ((3 4) "b" :class "one")
+              ((6 4) ("c") :atts (:id "ccc")))
+            :w '("md" "offset-md"))
+;;->
+;; (DIV (:CLASS "row")
+;;      (DIV (:CLASS "col-md-3 col-offset-md-4")
+;;           "a")
+;;      (DIV (:CLASS "col-md-3 col-offset-md-4 one")
+;;           "b")
+;;      (DIV (:CLASS "col-md-6 col-offset-md-4" :ID "ccc")
+;;           "c"))
+
+  
+  #+END_SRC
+* GlyphIcon
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-glyphicon (style &key (class "") atts)
+  `(span (,@(join-class `(,#?"glyphicon glyphicon-${style}"
+                             ,class))
+            ,@atts)))
+
+  #+END_SRC
+
+* Carousel
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-carousel (id items &key (class "") atts )
+  (let ((ooo) (slides) (count 0))
+    (loop for i in items
+       do (destructuring-bind (item &key (class "") atts active caption) i
+            (push `(li (:data-target ,#?"#${id}"
+                                     :class ,(if active "active" "")
+                                     :data-slide-to ,count))
+                  ooo)
+            (incf count)
+            (push `(div (,@(join-class `("item"
+                                         ,(if active "active" "")
+                                         ,class))
+                           ,@atts)
+                        ,item
+                        ,(if caption
+                             `(div (:class "carousel-caption") ,@caption)))
+                  slides)))
+    `(div (,@(join-class `("carousel" ,class))
+             :data-ride "carousel"
+             :id ,id
+             ,@atts)
+          ;; ooo 
+          (ol (:class "carousel-indicators") ,@(nreverse ooo))
+          ;; Slides
+          (div (:class "carousel-inner")
+               ,@(nreverse slides))
+          ;; < >
+          ,@(flet ((ctr (side slide title)
+                   `(a (:href ,#?"#${id}" 
+                              :class ,(concat side " " "carousel-control")
+                              :data-slide ,slide)
+                       (span (:class ,#?"glyphicon glyphicon-chevron-${side}"))
+                       (span (:class "sr-only") ,title))))
+            (list (ctr "left" "prev" "Previous")
+                  (ctr "right" "next" "Next"))))))
+#+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-carousel
+ "carl"
+ '(((img (:src "" :alt "")))
+   ((img (:src "" :alt "")) :active t)
+   ((img (:src "" :alt ""))
+    :caption ((h3 () "h3")
+              (p () "pp")))
+   ("hh")))
+;;-> 
+;; (DIV (:CLASS "carousel" :DATA-RIDE "carousel" :ID "carl")
+;;      (OL (:CLASS "carousel-indicators")
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 0))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "active" :DATA-SLIDE-TO 1))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 2))
+;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 3)))
+;;      (DIV (:CLASS "carousel-inner")
+;;           (DIV (:CLASS "item")
+;;                (IMG (:SRC "" :ALT ""))
+;;                NIL)
+;;           (DIV (:CLASS "item active")
+;;                (IMG (:SRC "" :ALT ""))
+;;                NIL)
+;;           (DIV (:CLASS "item")
+;;                (IMG (:SRC "" :ALT ""))
+;;                (DIV (:CLASS "carousel-caption")
+;;                     (H3 NIL "h3")
+;;                     (P NIL "pp")))
+;;           (DIV (:CLASS "item") "hh" NIL))
+;;      (A (:HREF "#carl" :CLASS "left carousel-control" :DATA-SLIDE "prev")
+;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-left"))
+;;         (SPAN (:CLASS "sr-only") "Previous"))
+;;      (A (:HREF "#carl" :CLASS "right carousel-control" :DATA-SLIDE "next")
+;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-right"))
+;;         (SPAN (:CLASS "sr-only") "Next")))
+
+  
+  #+END_SRC
+* Panel
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-panel (&key header body footer (class "") atts (style ""))
+  (flet ((fn (part str)
+           (destructuring-bind
+                 (item &key (class "") atts) part
+             `(div (,@(join-class `(,(concat "panel-" str) ,class)) ,@atts)
+                   ,@(to-list item)))))
+    `(div (,@(join-class `("panel"
+                           ,(empty-str-or style :add "panel-")
+                           ,class))
+             ,@atts)
+          ,(if header (fn header "heading"))
+          ,(fn body "body")
+          ,(if footer (fn footer "footer")))))
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-panel :style "default"
+          :header '("Heading")
+          :footer '("Footer")
+          :body '("Content"))
+;;-> 
+;; (DIV
+;;  (:CLASS "panel panel-default")
+;;  (DIV
+;;   (:CLASS "panel-heading")
+;;   "Heading")
+;;  (DIV
+;;   (:CLASS "panel-footer")
+;;   "Heading")
+;;  (DIV
+;;   (:CLASS "panel-body")
+;;   "Content"))
+  #+END_SRC
+** Group
+- group : <div> panel-group  [<div> panel]+
+
+* Navigation Bars
+- <nav> navbar navbar-default [navbar-fixed-[...]]
+  - container[-fluid]
+    - navbar-header
+      - navbar-brand
+    - <ul> nav navbar-nav [<li> ..]+
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-navbar (navs &key brand (class "") atts (style "default") fluid (fixed ""))
+  "style:(default inverse) fixed:(top bottom)"
+  `(div (,@(join-class `("navbar"
+                         ,(empty-str-or style :add "navbar-")
+                         ,(empty-str-or fixed :add "navbar-fixed-")
+                         ,class))
+           ,@atts)
+        (div (:class ,(concat "container" (if fluid "-fluid" "")))
+             (div (:class "navbar-header")
+                  ,@(to-list brand))
+             ,@navs)))
+
+(defun bs-nav (items &key (class "") atts (align ""))
+  "align:(right left)"
+  `(ul (,@(join-class `("nav navbar-nav"
+                         ,(empty-str-or align :add "navbar-")
+                         ,class)))
+        ,@(loop for i in items
+             collect
+               (destructuring-bind
+                     (item &key (class "") atts (href "#") sp) i
+                 (if sp
+                     item
+                     `(li (,@(join-class `("" ,class)) ,@atts)
+                          (a (:href ,href)
+                             ,@(to-list item))))))))
+
+(defun bs-nav-collapse (target &key (icons 3))
+  `(button (:class "navbar-toggle"
+                   :type "button"
+                   :data-toggle "collapse"
+                   :data-target ,target)
+        ,@(loop repeat icons
+             collect '(span (:class "icon-bar")))))
+
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-navbar `("navbar") :fixed "bottom")
+
+(bs-navbar `(,(bs-nav `((1)
+                        (2)
+                        (,(bs-dropdown "dd" '((1) (2)) :tag 'li) :sp t)))
+              ,(bs-nav '((1) (2)) :align "right")
+              ,(bs-btn '("button") :style "danger" :class "navbar-btn")
+              (p (:class "navbar-text") "text" ))
+           :brand '((a (:class "navbar-brand" :href "#") "Home")))
+
+(bs-navbar `((div (:class "collapse navbar-collapse" :id "myNB")
+                  ,(bs-nav '((1)
+                             (2)))))
+           :brand `(,(bs-nav-collapse "#myNB")
+                     (a (:class "navbar-brand" :href "#") "Home")))
+  
+  #+END_SRC
+
+* --- 以下也许还需要修改
 * List Groups
 - li
   #+BEGIN_SRC lisp
@@ -432,43 +652,6 @@
                  (p (:class "list-group-item-text") Text)))))
   #+END_SRC
 
-* Panel
-- panel
-  #+BEGIN_SRC lisp
-(defun bs-panel (&key head body footer (class "") atts (style ""))
-  (flet ((fn (part str)
-           (destructuring-bind
-                 (item &key (class "") atts) part
-             `(div (,@(join-class `(,(concat "panel-" str) ,class)) ,@atts)
-                   ,@(to-list item)))))
-    `(div (,@(join-class `("panel"
-                           ,(empty-str-or style :add "panel-")
-                           ,class))
-             ,@atts)
-          ,(if head (fn head "heading"))
-          ,(if footer (fn head "footer"))
-          ,(fn body "body"))))
-
-;; (bs-panel :style "default"
-;;           :head '("Heading")
-;;           :footer '("Footer")
-;;           :body '("Content"))
-;;-> 
-;; (DIV
-;;  (:CLASS "panel panel-default")
-;;  (DIV
-;;   (:CLASS "panel-heading")
-;;   "Heading")
-;;  (DIV
-;;   (:CLASS "panel-footer")
-;;   "Heading")
-;;  (DIV
-;;   (:CLASS "panel-body")
-;;   "Content"))
-
-
-  #+END_SRC
-- group : <div> panel-group  [<div> panel]+
 
 * Dropdown
 - <div> dropdown
@@ -679,70 +862,6 @@
 ;;                    :id "three" :class "fade")))
 
 #+END_SRC
-
-* Navigation Bars
-- <nav> navbar navbar-default [navbar-fixed-[...]]
-  - container[-fluid]
-    - navbar-header
-      - navbar-brand
-    - <ul> nav navbar-nav [<li> ..]+
-- navbar
-  #+BEGIN_SRC lisp
-(defun bs-navbar (navs &key brand (class "") atts (style "default") fluid (fixed ""))
-  "style:(default inverse) fixed:(top bottom)"
-  `(div (,@(join-class `("navbar"
-                         ,(empty-str-or style :add "navbar-")
-                         ,(empty-str-or fixed :add "navbar-fixed-")
-                         ,class))
-           ,@atts)
-        (div (:class ,(concat "container" (if fluid "-fluid" "")))
-             (div (:class "navbar-header")
-                  ,@(to-list brand))
-             ,@navs)))
-
-(defun bs-nav (items &key (class "") atts (align ""))
-  "align:(right left)"
-  `(ul (,@(join-class `("nav navbar-nav"
-                         ,(empty-str-or align :add "navbar-")
-                         ,class)))
-        ,@(loop for i in items
-             collect
-               (destructuring-bind
-                     (item &key (class "") atts (href "#") sp) i
-                 (if sp
-                     item
-                     `(li (,@(join-class `("" ,class)) ,@atts)
-                          (a (:href ,href)
-                             ,@(to-list item))))))))
-
-(defun bs-nav-collapse (target &key (icons 3))
-  `(button (:class "navbar-toggle"
-                   :type "button"
-                   :data-toggle "collapse"
-                   :data-target ,target)
-        ,@(loop repeat icons
-             collect '(span (:class "icon-bar")))))
-
-;; (bs-nav-collapse "#ene" :icons 5)
-
-
-;; (bs-navbar `("navbar") :fixed "bottom")
-;; (bs-navbar `(,(bs-nav `((1)
-;;                         (2)
-;;                         (,(bs-dropdown "dd" '((1) (2)) :tag 'li) :sp t)))
-;;               ,(bs-nav '((1) (2)) :align "right")
-;;               ,(bs-btn '("button") :style "danger" :class "navbar-btn")
-;;               (p (:class "navbar-text") "text" ))
-;;            :brand '((a (:class "navbar-brand" :href "#") "Home")))
-
-;; (bs-navbar `((div (:class "collapse navbar-collapse" :id "myNB")
-;;                   ,(bs-nav '((1)
-;;                              (2)))))
-;;            :brand `(,(bs-nav-collapse "#myNB")
-;;                      (a (:class "navbar-brand" :href "#") "Home")))
-
-  #+END_SRC
-
 * Form
 - .form-control : width 100%  (input textarea select)
 - Layout
@@ -762,21 +881,6 @@
 ;;             ,(bs-form-group))
 ;;          :style "horizontal")
   
-  #+END_SRC
-
-* Input group
-- Icon+Input
-  #+BEGIN_SRC lisp
-(defun bs-icon-input (icon id name &key (type "text") (ph name) reverse)
-  (let ((content `((span (:class "input-group-addon")
-                         (i (:class ,#?"glyphicon glyphicon-${icon}")))
-                   (input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph)))))
-    (if reverse (setf content (nreverse content)))
-    `(div (:class "input-group")
-          ,@content)))
-
-;; (bs-icon-input "user" "uname" "username" :reverse t)
-
   #+END_SRC
 
 * Media Object
@@ -839,86 +943,6 @@
 ;;                 (P NIL "PPPPP"))
 ;;                NIL))
 ;;      NIL)
-
-#+END_SRC
-
-* Carousel
-#+BEGIN_SRC lisp
-(defun bs-carousel (id items &key (class "") atts )
-  (let ((ooo) (slides) (count 0))
-    (loop for i in items
-       do (destructuring-bind (item &key (class "") atts active caption) i
-            (push `(li (:data-target ,#?"#${id}"
-                                     :class ,(if active "active" "")
-                                     :data-slide-to ,count))
-                  ooo)
-            (incf count)
-            (push `(div (,@(join-class `("item"
-                                         ,(if active "active" "")
-                                         ,class))
-                           ,@atts)
-                        ,item
-                        ,(if caption
-                             `(div (:class "carousel-caption") ,@caption)))
-                  slides)))
-    `(div (,@(join-class `("carousel" ,class))
-             :data-ride "carousel"
-             :id ,id
-             ,@atts)
-          ;; ooo 
-          (ol (:class "carousel-indicators") ,@(nreverse ooo))
-          ;; Slides
-          (div (:class "carousel-inner")
-               ,@(nreverse slides))
-          ;; < >
-          ,@(flet ((ctr (side slide title)
-                   `(a (:href ,#?"#${id}" 
-                              :class ,(concat side " " "carousel-control")
-                              :data-slide ,slide)
-                       (span (:class ,#?"glyphicon glyphicon-chevron-${side}"))
-                       (span (:class "sr-only") ,title))))
-            (list (ctr "left" "prev" "Previous")
-                  (ctr "right" "next" "Next"))))))
-
-
-;; Usage
-;; (bs-carousel
-;;  "carl"
-;;  '(((img (:src "" :alt "")))
-;;    ((img (:src "" :alt "")) :active t)
-;;    ((img (:src "" :alt ""))
-;;     :caption ((h3 () "h3")
-;;               (p () "pp")))
-;;    ("hh")))
-;;-> 
-;; (DIV (:CLASS "carousel" :DATA-RIDE "carousel" :ID "carl")
-;;      (OL (:CLASS "carousel-indicators")
-;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 0))
-;;          (LI (:DATA-TARGET "#carl" :CLASS "active" :DATA-SLIDE-TO 1))
-;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 2))
-;;          (LI (:DATA-TARGET "#carl" :CLASS "" :DATA-SLIDE-TO 3)))
-;;      (DIV (:CLASS "carousel-inner")
-;;           (DIV (:CLASS "item")
-;;                (IMG (:SRC "" :ALT ""))
-;;                NIL)
-;;           (DIV (:CLASS "item active")
-;;                (IMG (:SRC "" :ALT ""))
-;;                NIL)
-;;           (DIV (:CLASS "item")
-;;                (IMG (:SRC "" :ALT ""))
-;;                (DIV (:CLASS "carousel-caption")
-;;                     (H3 NIL "h3")
-;;                     (P NIL "pp")))
-;;           (DIV (:CLASS "item") "hh" NIL))
-;;      (A (:HREF "#carl" :CLASS "left carousel-control" :DATA-SLIDE "prev")
-;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-left"))
-;;         (SPAN (:CLASS "sr-only") "Previous"))
-;;      (A (:HREF "#carl" :CLASS "right carousel-control" :DATA-SLIDE "next")
-;;         (SPAN (:CLASS "glyphicon glyphicon-chevron-right"))
-;;         (SPAN (:CLASS "sr-only") "Next")))
-
-
-
 
 #+END_SRC
 
@@ -1013,41 +1037,5 @@ $(document).ready(function(){
                    (item &key (class "") atts ) i
                `(div (,@(join-class `("" ,class)) ,@atts)
                      ,@(to-list item))))))
-
-
-;; Carousel
-(defun bs-carousel(items)
-  `(div (:id "carousel-example-generic" :data-ride "carousel"
-             :class "carousel slide")
-        ,@(let ((ooo) (imgs) (count 0))
-            (loop for i in items
-               do (destructuring-bind (cap src &optional alt active) i
-                    (push `(li (:data-target "#carousel-example-generic"
-                                             :class ,(if active "active" "")
-                                             :data-slide-to ,count))
-                          ooo)
-                    (incf count)
-                    (push `(div (:class ,(concat "item"
-                                                 (if active " active" "")))
-                                (img (:alt ,(if alt alt "") :src ,src))
-                                (div (:class "carousel-caption") ,@cap))
-                          imgs)))
-            `(;; ooo
-              (ol (:class "carousel-indicators") ,@(nreverse ooo))
-              ;; img
-              (div (:role "listbox" :class "carousel-inner")
-                   ,@(nreverse imgs))))
-        ;; < >
-        (a (:href "#carousel-example-generic" :role "button" :class
-                  "left carousel-control" :data-slide "prev")
-           (span (:class "glyphicon glyphicon-chevron-left" :aria-hidden "true"))
-           (span (:class "sr-only") "Previous"))
-        (a (:href "#carousel-example-generic" :role "button"
-                  :class "right carousel-control" :data-slide "next")
-           (span (:class "glyphicon glyphicon-chevron-right"
-                         :aria-hidden "true"))
-           (span (:class "sr-only") "Next"))))
-
-
 
 #+END_SRC
