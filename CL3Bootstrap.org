@@ -23,9 +23,21 @@
 * Package
 #+BEGIN_SRC lisp :tangle yes
 (in-package :cl-user)
-(defpackage :xt3.bootstrap
-  (:use :cl))
-(in-package :xt3.bootstrap)
+(defpackage :xt3.web.bootstrap
+  (:use :cl)
+  (:export :bs-container
+           :bs-btn
+           :bs-icon-input
+           :bs-input-btn
+           :bs-row-col
+           :bs-glyphicon
+           :bs-carousel
+           :bs-panel
+           :bs-navbar
+           :bs-nav
+           :bs-nav-collapse
+           :bs-breadcrumb))
+(in-package :xt3.web.bootstrap)
 #+END_SRC
 * Help
 ** join-class
@@ -195,23 +207,6 @@
 ;;   (A (:HREF "#") 3)))
 #+END_SRC
 
-* Breadcrumbs
-#+BEGIN_SRC lisp
-(defun bs-breadcrumbs (pages &key (class "") atts)
-  `(ul (:class ,(join-string-list
-                 (remove-if #'empty-str-p 
-                            `("breadcrumbs"
-                             ,class))))
-       ,@(loop for i in pages
-            collect (destructuring-bind (page &key (href "#") class atts) i
-                      `(li (:class ,class ,@atts)
-                           (a (:href ,href) ,@page))))))
-
-;; (bs-breadcrumb '(((one))
-;;                  ((two) :class "active")
-;;                  ((three) :class "disabled")))
-#+END_SRC
-
 * Pager
 #+BEGIN_SRC lisp
 (defun bs-pager (&key prev next (class "") atts)
@@ -305,10 +300,11 @@
 ** Icon+Input
 - Impl
   #+BEGIN_SRC lisp :tangle yes
-(defun bs-icon-input (icon id name &key (type "text") (ph name) reverse)
+(defun bs-icon-input (icon id name &key (type "text") (ph name) reverse
+(isize "30"))
   (let ((content `((span (:class "input-group-addon")
                          (i (:class ,#?"glyphicon glyphicon-${icon}")))
-                   (input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph)))))
+                   (input (:class "form-control" :id ,id :type ,type :name ,name :placeholder ,ph :size ,isize)))))
     (if reverse (setf content (nreverse content)))
     `(div (:class "input-group")
           ,@content)))
@@ -510,6 +506,7 @@
           :header '("Heading")
           :footer '("Footer")
           :body '("Content"))
+
 ;;-> 
 ;; (DIV
 ;;  (:CLASS "panel panel-default")
@@ -557,7 +554,7 @@
                      (item &key (class "") atts (href "#") sp) i
                  (if sp
                      item
-                     `(li (,@(join-class `("" ,class)) ,@atts)
+                     `(li (:class ,class ,@atts)
                           (a (:href ,href)
                              ,@(to-list item))))))))
 
@@ -590,6 +587,41 @@
   
   #+END_SRC
 
+* Breadcrumb
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun bs-breadcrumb (pages &key (class "") atts)
+  `(ul (,@(join-class `("breadcrumb" ,class))
+          ,@atts)
+       ,@(loop for i in pages
+            collect (destructuring-bind (page &key href (class "") atts) i
+                      (if href 
+                          `(li (:class ,class ,@atts)
+                               (a (:href ,href) ,@(to-list page)))
+                          `(li (:class ,class ,@atts)
+                               ,@(to-list page)))))))
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+(bs-breadcrumb '((("one"))
+                 (("two") :class "active")
+                 (("three") :class "disabled")))
+;;-> 
+(UL
+ (:CLASS "breadcrumb")
+ (LI
+  (:CLASS "")
+  (A (:HREF "#") "one"))
+ (LI
+  (:CLASS "active")
+  (A (:HREF "#") "two"))
+ (LI
+  (:CLASS "disabled")
+  (A
+   (:HREF "#")
+   "three"
+   (SPAN (:CLASS "divider")))))  
+  #+END_SRC
 * --- 以下也许还需要修改
 * List Groups
 - li
