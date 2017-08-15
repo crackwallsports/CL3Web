@@ -173,39 +173,6 @@
 
 #+END_SRC
 
-* Pagination
-#+BEGIN_SRC lisp
-(defun bs-pagination (pages &key (class "") atts size)
-  `(ul (:class ,(join-string-list
-                 (remove-if #'empty-str-p 
-                            `("pagination"
-                              ,(if size
-                                  #?"pagination-${size}"
-                                  "")
-                             ,class))))
-       ,@(loop for i in pages
-            collect (destructuring-bind (page &key (href "#") class atts) i
-                      `(li (:class ,class ,@atts)
-                           (a (:href ,href) ,@page))))))
-
-;; (bs-pagination '(((1))
-;;                  ((2) :class "active")
-;;                  ((3) :class "disabled"))
-;;                :size "lg"
-;;                )
-;;-> 
-;; (UL
-;;  (:CLASS "pagination pagination-lg")
-;;  (LI
-;;   (:CLASS NIL)
-;;   (A (:HREF "#") 1))
-;;  (LI
-;;   (:CLASS "active")
-;;   (A (:HREF "#") 2))
-;;  (LI
-;;   (:CLASS "disabled")
-;;   (A (:HREF "#") 3)))
-#+END_SRC
 
 * Pager
 #+BEGIN_SRC lisp
@@ -622,6 +589,48 @@
    "three"
    (SPAN (:CLASS "divider")))))  
   #+END_SRC
+* Pagination
+#+BEGIN_SRC lisp
+(defun bs-pagination (pages &key (class "") atts size)
+  `(ul (,@(join-class `("pagination"
+                        ,(empty-str-or size :add "pagination-")
+                        ,class))
+          ,@atts)
+       ,@(loop for i in pages
+            collect (destructuring-bind (page &key (href "#") (class "") atts) i
+                      `(li (:class ,class ,@atts)
+                           (a (:href ,href) ,@(to-list page)))))))
+
+(bs-pagination '(((1))
+                 ((2) :class "active")
+                 ((3) :class "disabled"))
+               :size "lg"
+               )
+;; (UL
+;;  (:CLASS "pagination pagination-lg")
+;;  (LI
+;;   (:CLASS "")
+;;   (A (:HREF "#") 1))
+;;  (LI
+;;   (:CLASS "active")
+;;   (A (:HREF "#") 2))
+;;  (LI
+;;   (:CLASS "disabled")
+;;   (A (:HREF "#") 3)))
+;;-> 
+;; (UL
+;;  (:CLASS "pagination pagination-lg")
+;;  (LI
+;;   (:CLASS NIL)
+;;   (A (:HREF "#") 1))
+;;  (LI
+;;   (:CLASS "active")
+;;   (A (:HREF "#") 2))
+;;  (LI
+;;   (:CLASS "disabled")
+;;   (A (:HREF "#") 3)))
+#+END_SRC
+
 * --- 以下也许还需要修改
 * List Groups
 - li
