@@ -590,7 +590,8 @@
    (SPAN (:CLASS "divider")))))  
   #+END_SRC
 * Pagination
-#+BEGIN_SRC lisp
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
 (defun bs-pagination (pages &key (class "") atts size)
   `(ul (,@(join-class `("pagination"
                         ,(empty-str-or size :add "pagination-")
@@ -601,36 +602,28 @@
                       `(li (:class ,class ,@atts)
                            (a (:href ,href) ,@(to-list page)))))))
 
+  #+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
 (bs-pagination '(((1))
                  ((2) :class "active")
                  ((3) :class "disabled"))
-               :size "lg"
-               )
-;; (UL
-;;  (:CLASS "pagination pagination-lg")
-;;  (LI
-;;   (:CLASS "")
-;;   (A (:HREF "#") 1))
-;;  (LI
-;;   (:CLASS "active")
-;;   (A (:HREF "#") 2))
-;;  (LI
-;;   (:CLASS "disabled")
-;;   (A (:HREF "#") 3)))
+               :size "lg")
 ;;-> 
-;; (UL
-;;  (:CLASS "pagination pagination-lg")
-;;  (LI
-;;   (:CLASS NIL)
-;;   (A (:HREF "#") 1))
-;;  (LI
-;;   (:CLASS "active")
-;;   (A (:HREF "#") 2))
-;;  (LI
-;;   (:CLASS "disabled")
-;;   (A (:HREF "#") 3)))
-#+END_SRC
+(UL
+ (:CLASS "pagination pagination-lg")
+ (LI
+  (:CLASS NIL)
+  (A (:HREF "#") 1))
+ (LI
+  (:CLASS "active")
+  (A (:HREF "#") 2))
+ (LI
+  (:CLASS "disabled")
+  (A (:HREF "#") 3)))
 
+  
+  #+END_SRC
 * --- 以下也许还需要修改
 * List Groups
 - li
