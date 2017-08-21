@@ -36,7 +36,8 @@
            :bs-navbar
            :bs-nav
            :bs-nav-collapse
-           :bs-breadcrumb))
+           :bs-breadcrumb
+           :bs-pagination))
 (in-package :xt3.web.bootstrap)
 #+END_SRC
 * Help
@@ -592,7 +593,7 @@
 * Pagination
 - Impl
   #+BEGIN_SRC lisp :tangle yes
-(defun bs-pagination (pages &key (class "") atts size)
+(defun bs-pagination (pages &key (class "") atts (size ""))
   `(ul (,@(join-class `("pagination"
                         ,(empty-str-or size :add "pagination-")
                         ,class))

@@ -1,0 +1,40 @@
+#+TITLE: CL 3 CSS
+#+AUTHOR: Xt3
+
+* CSS
+* -----
+* Package
+#+BEGIN_SRC lisp :tangle yes
+(in-package :cl-user)
+(defpackage :xt3.web.css
+  (:use :cl)
+  (:export :x-browser)
+  )
+(in-package :xt3.web.css)
+#+END_SRC
+
+* Browser
+- Impl
+  #+BEGIN_SRC lisp :tangle yes
+(defun x-browser (att val &optional (browser '("webkit" "moz" "ms")))
+  (nconc (let ((ls))
+           (loop for i in browser
+              do (progn (push (make-keyword (format nil "-~A-~A" i att)) ls)
+                        (push val ls)))
+           (nreverse ls))
+         (list (make-keyword att) val)))
+
+#+END_SRC
+- Usage
+  #+BEGIN_SRC lisp
+;; (x-browser "border-radius" "10px")
+
+(->css `(.box (,@(x-browser "border-radius" "10px"))))
+".box {
+  -webkit-border-radius: 10px;
+  -moz-border-radius: 10px;
+  -ms-border-radius: 10px;
+  border-radius: 10px
+}"
+  
+  #+END_SRC
