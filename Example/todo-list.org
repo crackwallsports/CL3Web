@@ -523,7 +523,11 @@
       ,(jq-ajax "/todo/check"
                 :data '(create
                         :td-id (chain ($ obj) (parent) (attr "id")))
-                :suc '(chain ($ obj) (parent) (toggle-class "td-checked"))
+                :suc '(progn
+                       (chain ($ obj) (parent) (toggle-class "td-checked"))
+                       (if (and (not (chain ($ obj) (parent) (has-class "td-checked")))
+                                (chain ($ ".td-toggle-all") (has-class "td-completed")))
+                           (chain ($ ".td-toggle-all") (remove-class "td-completed"))))
                 :err '(alert (@ jqXHR response-text))))
    `(defun check-all (obj)
       (chain window event (stop-propagation))
