@@ -78,28 +78,28 @@
 #+END_SRC
 ** DB
 #+BEGIN_SRC lisp :tangle yes
-;;; Todo List
-;; count
-(defparameter *td-count* 0)
+;;; Todo List : (id : text)
 
 ;; schedule
 (defparameter *td-schedule* (make-hash-table :test 'equal))
-;; (id : text)
-
 ;; completed
 (defparameter *td-completed* (make-hash-table :test 'equal))
-;; (id : text)
+
 #+END_SRC
-** Helper
-#+BEGIN_SRC lisp :tangle yes
-(defmacro route-> (method path body)
-  `(setf (route *app* ,path :method ,method)
-         ,body))
-#+END_SRC
+
 * Router
 ** Base
 #+BEGIN_SRC lisp :tangle yes
 ;; Router
+#+END_SRC
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+(defmacro route-> (method path body)
+  `(setf (route *app* ,path :method ,method)
+         ,body))
+
+;; count
+(defparameter *td-count* 0)
 #+END_SRC
 ** /
 #+BEGIN_SRC lisp :tangle yes
@@ -133,9 +133,10 @@
                           ,(string #\u+00d7)))))))))
 #+END_SRC
 ** Remove
+*** Item
 #+BEGIN_SRC lisp :tangle yes
-;; POST /todo/remove
-(route-> :POST "/todo/remove" 
+;; POST /todo/remove/item
+(route-> :POST "/todo/remove/item" 
   #'(lambda (params)
       (let ((id (cdr (assoc "td-id" params :test #'string=))))
         (if (or (remhash id *td-schedule*)
@@ -146,6 +147,17 @@
               (format nil "~A id=~D" "删除失败" id))))))
 
 #+END_SRC
+*** Completed Items
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/remove/completed
+(route-> :POST "/todo/remove/completed" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (clrhash *td-completed*)
+             "完成"))
+
+#+END_SRC
+
 ** Check
 *** /
 #+BEGIN_SRC lisp :tangle yes
@@ -193,7 +205,6 @@
              "完成"))
 #+END_SRC
 
-
 ** Edited
 #+BEGIN_SRC lisp :tangle yes
 ;; POST /todo/edited
@@ -214,6 +225,27 @@
            (setf (response-status *response*) 500)
            "未知错误")))))
 #+END_SRC
+
+** Count
+*** Completed
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/count/completed
+(route-> :POST "/todo/count/completed" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (format nil "~D" (hash-table-count *td-completed*))))
+#+END_SRC
+
+*** Left
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/count/left
+(route-> :POST "/todo/count/left" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (format nil "~D" (hash-table-count *td-schedule*))))
+#+END_SRC
+
+
 * View
 ** Base
 *** Helper
@@ -308,13 +340,13 @@
   (->html
    (layout-template
     args
-    :title (or (getf args :title) "我的 Todo List")
+    :title (or (getf args :title) "我的待办事项")
     :links `()
     :head-rest
     `((style () ,(index-css)))
     :content
     `((div (:class "title")
-                (h1 () "todo"))
+                (h1 () "待办"))
       (div (:class "todo")
            (div (:class "td-header")
                 ;; Mark all as Complete
@@ -345,17 +377,18 @@
                           ,(string #\u+00d7)))))
                     ))
            (div (:class "td-footer")
-                (span (:class "td-count")
-                      "还剩 " (strong () "0") " 项")
+                (span (:class "td-count-show")
+                      "还剩 " (strong (:id "td-count-left") "0") " 项")
                 (ul (:class "td-filters")
                     (li (:id "td-all" :class "td-selected"
-                             :onclick "return allItem(this)")
+                             :onclick "showItem(this)")
                         "全部")
-                    (li (:id "td-active" :onclick "return activeItem(this)")
+                    (li (:id "td-active" :onclick "showItem(this)")
                         "待办")
-                    (li (:id "td-completed" :onclick "return completedItem(this)")
+                    (li (:id "td-completed" :onclick "showItem(this)")
                         "完成"))
-                (button (:class "td-clear")
+                (span (:class "td-clear-completed"
+                                :onclick "removeCompleted(this)")
                         "清理完成项")))
       (footer (:class "info")
               (p () "双击编辑事项")
@@ -376,7 +409,8 @@
 (defun index-css ()
   (->css
    `((* (:margin 0 :padding 0
-                 :box-sizing "border-box"))
+                 :box-sizing "border-box"
+                 :outline "none"))
      (body (:background "#f5f5f5" :font-size "14px"))
      (a (:text-decoration "none"
                           :color "#bfbfbf"))
@@ -463,22 +497,24 @@
               :padding "10px 15px"
               :height "40px"
               :text-align "center")
-      (".td-count" (:float "left"))
+      (".td-count-show" (:float "left"))
       (".td-filters" (:list-style "none"
                                   :position "absolute"
-                                  :left 0 :right 0)
+                                  :left "0" :right "0")
                      (li (:display "inline"
-                                   :margin "3px"
-                                   :padding "3px 7px"
+                                   :margin "2px"
+                                   :padding "3px 3px"
                                    :border "1px solid rgba(0, 0, 0, 0)"
-                                   :border-radius "3px"))
+                                   :border-radius "3px"
+                                   :cursor "pointer"))
                      ("li:hover" (:border-color "rgba(175, 47, 47, 0.1)"))
                      ("li.td-selected" (:border-color "rgba(175, 47, 47, 0.2)")))
-      (".td-clear" (:float "right"
-                           :border "none"
-                           :background "none"
-                           :font-size "100%"
-                           :font-weight "100")))
+      (".td-clear-completed" (:float "right"
+                                     :cursor "pointer"
+                                     :display "none"
+                                     :position "relative"))
+      (".td-clear-completed:hover" (:text-decoration "underline"))
+      (".td-clear-completed.td-has-completed" (:display "block")))
      (".td-footer::before" (:content "''"
                                      :position "absolute"
                                      :top 0 :left 0
@@ -494,6 +530,24 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun index-js ()
   (ps*
+   ;; Show
+   `(defun show-item (obj)
+      ;;(chain console (log (@ obj id)))
+      (edit-cancel ($ "#td-edit") )
+      (chain ($ ".td-selected") (remove-class "td-selected"))
+      (chain ($ obj) (add-class "td-selected"))
+      (case (chain ($ obj) (attr "id"))
+        ("td-all"
+         (chain ($ ".td-list") (children "li") (show)))
+        ("td-active"
+         (chain ($ ".td-list") (children "li") (show))
+         (chain ($ ".td-list") (children "li.td-checked") (hide)))
+        ("td-completed"
+         (chain ($ ".td-list") (children "li") (hide))
+         (chain ($ ".td-list") (children "li.td-checked") (show)))
+        (t nil)))
+   
+   ;; Add
    `(defun add-item (e)
       ;; (chain console (log e))
       (var obj (@ e target))
@@ -506,18 +560,35 @@
                            :td-text (chain ($ obj) (val)))
                    :suc '(progn
                           (chain ($ ".td-list") (prepend data))
-                          (chain ($ obj) (val "")))
+                          (chain ($ obj) (val ""))
+                          (update-footer))
                    :err '(alert (@ jqXHR response-text))))
         (t nil)))
-   
+
+   ;; Remove
    `(defun remove-item (obj)
       (chain window event (stop-propagation))
-      ,(jq-ajax "/todo/remove"
+      ,(jq-ajax "/todo/remove/item"
                 :data '(create
                         :td-id (chain ($ obj) (parent) (attr "id")))
-                :suc '(chain ($ obj) (parent) (remove))
+                :suc '(progn
+                       (chain ($ obj) (parent) (remove))
+                       (update-footer))
                 :err '(alert (@ jqXHR response-text))))
-   
+   `(defun remove-completed (obj)
+      ,(jq-ajax "/todo/remove/completed"
+                :suc '(progn
+                       (edit-cancel ($ "#td-edit"))
+                       (chain
+                        ($ ".td-list")
+                        (children ".td-checked")
+                        (remove))
+                       (chain
+                        ($ ".td-toggle-all")
+                        (remove-class "td-completed"))
+                       (update-footer))
+                :err '(alert (@ jqXHR response-text))))
+   ;; Check
    `(defun check-item (obj)
       (chain window event (stop-propagation))
       ,(jq-ajax "/todo/check"
@@ -527,24 +598,28 @@
                        (chain ($ obj) (parent) (toggle-class "td-checked"))
                        (if (and (not (chain ($ obj) (parent) (has-class "td-checked")))
                                 (chain ($ ".td-toggle-all") (has-class "td-completed")))
-                           (chain ($ ".td-toggle-all") (remove-class "td-completed"))))
+                           (chain ($ ".td-toggle-all") (remove-class "td-completed")))
+                       (update-footer))
                 :err '(alert (@ jqXHR response-text))))
    `(defun check-all (obj)
       (chain window event (stop-propagation))
-      (if (chain ($ "#td-edit") (has-class "td-editing"))
-          (edit-cancel ($ "#td-edit")))
+      (edit-cancel ($ "#td-edit"))
       (if (chain ($ obj) (has-class "td-completed"))
           ,(jq-ajax "/todo/check/clear"
-                    :suc '(chain
-                           ($ ".td-list")
-                           (children "li")
-                           (remove-class "td-checked"))
+                    :suc '(progn
+                           (chain
+                            ($ ".td-list")
+                            (children "li")
+                            (remove-class "td-checked"))
+                           (update-footer))
                     :err '(alert (@ jqXHR response-text)))
           ,(jq-ajax "/todo/check/all"
-                    :suc '(chain
-                           ($ ".td-list")
-                           (children "li")
-                           (add-class "td-checked"))
+                    :suc '(progn
+                           (chain
+                            ($ ".td-list")
+                            (children "li")
+                            (add-class "td-checked"))
+                           (update-footer))
                     :err '(alert (@ jqXHR response-text))))
       (chain ($ obj) (toggle-class "td-completed")))
    
@@ -552,8 +627,7 @@
    `(defun edit-item (obj)
       ;; obj === ".td-text"
       (if (chain ($ obj) (parent) (has-class "td-checked")) return)
-      (if (chain ($ "#td-edit") (has-class "td-editing"))
-          (edit-cancel ($ "#td-edit")))
+      (edit-cancel ($ "#td-edit"))
       (chain
        ($ obj)
        (parent)
@@ -586,9 +660,30 @@
         (t nil)))
    `(defun edit-cancel (obj)
       ;; (chain console (log "edit-cancel"))
-      (chain
-       ($ obj)
-       (toggle-class "td-editing")
-       (blur)
-       (prev) (toggle-class "td-editing")))))
+      (if (chain ($ obj) (has-class "td-editing"))
+          (chain
+           ($ obj)
+           (remove-class "td-editing")
+           (blur)
+           (prev) (remove-class "td-editing"))))
+
+   ;; Update
+   `(defun update-footer ()
+      ,(jq-ajax "/todo/count/left" 
+                :suc '(chain
+                       ($ "#td-count-left") (text data))
+                :err '(alert (@ jqXHR response-text)))
+      ,(jq-ajax "/todo/count/completed" 
+                :suc '(if (> data "0")
+                       (chain
+                        ($ ".td-clear-completed")
+                        (add-class "td-has-completed"))
+                       (chain
+                        ($ ".td-clear-completed")
+                        (remove-class "td-has-completed")))
+                :err '(alert (@ jqXHR response-text)))
+      ;;(chain console (log "show"))
+      (show-item ($ ".td-selected")))
+   `(update-footer)))
+
 #+END_SRC
