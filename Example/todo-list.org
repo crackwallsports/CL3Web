@@ -1,0 +1,590 @@
+#+TITLE: Todo List
+#+AUTHOR: Xt3
+
+* Load
+#+BEGIN_SRC lisp
+
+(ql:quickload :ningle)
+(ql:quickload :lack)
+(ql:quickload :parenscript)
+(load "base")
+
+(load "todo-list")
+(tdl:start :port 3000)
+(tdl:stop)
+
+(defun re-tdl ()
+  (if tdl::*handler*
+      (tdl:stop))
+  (load "todo-list")
+  (tdl:start :port 3000))
+#+END_SRC
+* Base
+** Package
+#+BEGIN_SRC lisp :tangle yes
+(in-package :cl-user)
+(defpackage todo-list
+  (:use :cl :ningle :xt3.web.base)
+  (:nicknames :tdl)
+  (:import-from :lack.builder
+                :builder)
+  (:import-from :lack.response
+                :response-body
+                :response-status
+                :finalize-response)
+  (:import-from :parenscript
+                :ps
+                :ps*
+                :chain
+                :create
+                :var
+                :@)
+  (:export :start
+           :stop))
+(in-package :todo-list)
+
+#+END_SRC
+** App
+#+BEGIN_SRC lisp :tangle yes
+ 
+(defparameter *app* (make-instance '<app>))
+(defvar *handler* nil)
+
+(defun start (&rest args &key server port debug &allow-other-keys)
+  (declare (ignore server port debug))
+  (when *handler*
+    (restart-case (error "Server is already running.")
+      (restart-server ()
+        :report "Restart the server"
+        (stop))))
+  (setf *handler*
+        ;; (apply #'clack:clackup *app* args)
+        (apply #'clack:clackup
+               (builder
+                (:static
+                 :path (lambda (path)
+                         (if (ppcre:scan "^(?:/images/|/css/|/js/|/robot\\.txt$|/favicon\\.ico$)" path)
+                             path
+                             nil))
+                 :root #P"static/") 
+                ,*app*)
+               args)))
+
+(defun stop ()
+  (prog1
+      (clack:stop *handler*)
+    (setf *handler* nil)))
+
+#+END_SRC
+** DB
+#+BEGIN_SRC lisp :tangle yes
+;;; Todo List
+;; count
+(defparameter *td-count* 0)
+
+;; schedule
+(defparameter *td-schedule* (make-hash-table :test 'equal))
+;; (id : text)
+
+;; completed
+(defparameter *td-completed* (make-hash-table :test 'equal))
+;; (id : text)
+#+END_SRC
+** Helper
+#+BEGIN_SRC lisp :tangle yes
+(defmacro route-> (method path body)
+  `(setf (route *app* ,path :method ,method)
+         ,body))
+#+END_SRC
+* Router
+** Base
+#+BEGIN_SRC lisp :tangle yes
+;; Router
+#+END_SRC
+** /
+#+BEGIN_SRC lisp :tangle yes
+;; GET /
+(route-> :GET "/" 
+  #'(lambda (params)
+      (declare (ignore params))
+      (index ())))
+#+END_SRC
+** Add
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/add
+(route-> :POST "/todo/add" 
+  #'(lambda (params)
+      (let ((text (cdr (assoc "td-text" params :test #'string=)))
+            (id (format nil "~D~3,'0D" (get-universal-time) (incf *td-count*))))
+        (if (string= text "")
+            (progn
+              (setf (response-status *response*) 500)
+              "标题不能为空")
+            (progn
+              (setf (gethash id *td-schedule*) text)
+              (->html
+               `(li (:id ,id)
+                    (input (:class "td-toggle" :type "checkbox"
+                                   :onclick "return checkItem(this)"))
+                    (span (:class "td-text"
+                                  :ondblclick "return editItem(this)")
+                          ,text)
+                    (span (:class "td-close" :onclick "return removeItem(this)")
+                          ,(string #\u+00d7)))))))))
+#+END_SRC
+** Remove
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/remove
+(route-> :POST "/todo/remove" 
+  #'(lambda (params)
+      (let ((id (cdr (assoc "td-id" params :test #'string=))))
+        (if (or (remhash id *td-schedule*)
+                (remhash id *td-completed*))
+            id
+            (progn
+              (setf (response-status *response*) 500)
+              (format nil "~A id=~D" "删除失败" id))))))
+
+#+END_SRC
+** Check
+*** /
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/check
+(route-> :POST "/todo/check" 
+  #'(lambda (params)
+      (let* ((id (cdr (assoc "td-id" params :test #'string=)))
+             (text (gethash id *td-schedule*))
+             (ctext (gethash id *td-completed*)))
+        (cond
+          (text (progn
+                  (remhash id *td-schedule*)
+                  (setf (gethash id *td-completed*) text)
+                  id))
+          (ctext (progn
+                   (remhash id *td-completed*)
+                   (setf (gethash id *td-schedule*) ctext)
+                   id))
+          (t (progn
+               (setf (response-status *response*) 500)
+               (format nil "~A id=~D" "checked失败" id)))))))
+#+END_SRC
+*** All
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/check/all
+(route-> :POST "/todo/check/all" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (maphash (lambda (k v)
+                        (setf (gethash k *td-completed*) v))
+                      ,*td-schedule*)
+             (clrhash *td-schedule*)
+             "完成"))
+#+END_SRC
+*** Clear
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/check/clear
+(route-> :POST "/todo/check/clear" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (maphash (lambda (k v)
+                        (setf (gethash k *td-schedule*) v))
+                      ,*td-completed*)
+             (clrhash *td-completed*)
+             "完成"))
+#+END_SRC
+
+
+** Edited
+#+BEGIN_SRC lisp :tangle yes
+;; POST /todo/edited
+(route-> :POST "/todo/edited" 
+  #'(lambda (params)
+      (let ((id (cdr (assoc "td-id" params :test #'string=)))
+            (text (cdr (assoc "td-text" params :test #'string=))))
+        (cond
+          ((string= text "")
+           (setf (response-status *response*) 500)
+           "标题不能为空")
+          ((gethash id *td-completed*)
+           (setf (response-status *response*) 500)
+           "已完成项不可编辑")
+          ((gethash id *td-schedule*)
+           (setf (gethash id *td-schedule*) text))
+          (t
+           (setf (response-status *response*) 500)
+           "未知错误")))))
+#+END_SRC
+* View
+** Base
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+;; CSS
+(defun x-browser (att val &optional (browser '("webkit" "moz" "ms")))
+  (nconc (let ((ls))
+           (loop for i in browser
+              do (progn (push (make-keyword (format nil "-~A-~A" i att)) ls)
+                        (push val ls)))
+           (nreverse ls))
+         (list (make-keyword att) val)))
+
+;; JS
+(defun jq-ajax (url &key (type "post") (data "") suc err)
+  `(chain
+    $
+    (ajax (create
+           url ,url
+           type ,type
+           data ,data
+           success (lambda (data status)
+                     (if (= status "success")
+                         ,suc))
+           error (lambda (jqXHR textStatus errorThrown)
+                   ,err)))))
+
+;; Return todo list
+(defun td-list ()
+  (let ((tdl))
+    (maphash (lambda (k v)
+               (push (list k v) tdl))
+             ,*td-schedule*)
+    (maphash (lambda (k v)
+               (push (list k v t) tdl))
+             ,*td-completed*)
+    (sort tdl #'string> :key #'car)))
+
+#+END_SRC
+*** Resource
+#+BEGIN_SRC lisp :tangle yes
+(defparameter *web-links*
+  (list
+   ;; Main
+   :main-css '(link (:rel "stylesheet" :href "/css/main.css"))
+   :main-js '(script (:src "/js/main.js"))
+   ;; jQuery
+   :jq-js '(script (:src "https://code.jquery.com/jquery-3.2.1.js"
+                    :integrity "sha256-DZAnKJ/6XZ9si04Hgrsxu/8s717jcIzLy3oi35EouyE="
+                    :crossorigin "anonymous"))
+   ;; Bootstrap
+   :bs-css '(link (:crossorigin "anonymous"
+                   :rel "stylesheet"
+                   :integrity "sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u"
+                   :href "https://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css"))
+   :bs-js '(script (:crossorigin "anonymous"
+                    :src "https://cdn.bootcss.com/bootstrap/3.3.7/js/bootstrap.min.js"
+                    :integrity "sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa"))
+   ;; Font
+   :goo-ft '((link (:rel "stylesheet" :type "text/css"
+                    :href "https://fonts.googleapis.com/css?family=Montserrat"))
+             (link (:rel "stylesheet" :type "text/css"
+                    :href "https://fonts.googleapis.com/css?family=Lato")))
+   ;; Markdown Editor
+   :md-editor-css '(link (:rel "stylesheet" :href "https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.css"))
+   :md-editor-js '(script (:src "https://cdn.jsdelivr.net/simplemde/latest/simplemde.min.js"))))
+#+END_SRC
+*** Layout
+#+BEGIN_SRC lisp :tangle yes
+(defun layout-template (args &key (title "标题") links head-rest content scripts)
+  (declare (ignore args))
+  `(,(doctype)
+     (html (:lang "en")
+           (head ()
+                 (meta (:charset "utf-8"))
+                 (meta (:name "viewport"
+                              :content "width=device-width, initial-scale=1, shrink-to-fit=no"))
+                 (meta (:name "description" :content "?"))
+                 (meta (:name "author" :content "Xt3"))
+                 (title nil ,title)
+                 ,@links
+                 ,@head-rest)
+           (body ()
+                 ,@content
+                 ,@scripts))))
+
+#+END_SRC
+** Index
+*** HTML
+#+BEGIN_SRC lisp :tangle yes
+(defun index (args)
+  (->html
+   (layout-template
+    args
+    :title (or (getf args :title) "我的 Todo List")
+    :links `()
+    :head-rest
+    `((style () ,(index-css)))
+    :content
+    `((div (:class "title")
+                (h1 () "todo"))
+      (div (:class "todo")
+           (div (:class "td-header")
+                ;; Mark all as Complete
+                (input (:type "checkbox"
+                              :class "td-toggle-all"
+                              :onclick "checkAll(this)"))
+                (label (:for "td-toggle-all") "全部完成")
+                ;; New Todo
+                (input (:type "text" :id "td-add" :placeholder "需要做什么..." :onkeyup "addItem(event)"))
+                ;; (span ( :class "add" :onclick "addItem()") "添加")
+                )
+           (div (:class "td-content")
+                (ul (:class "td-list")
+                    (input (:type "text" :id "td-edit" :onkeyup "editedItem(event)"))
+                    ;; map Hash
+                    ,@(loop for i in (td-list)
+                         collect
+                           (destructuring-bind (id text &optional checked) i
+                             `(li ,(append (list :id id)
+                                           (if checked
+                                               (list :class "td-checked")))
+                    (input (:class "td-toggle" :type "checkbox"
+                                   :onclick "return checkItem(this)"))
+                    (span (:class "td-text"
+                                  :ondblclick "return editItem(this)")
+                          ,text)
+                    (span (:class "td-close" :onclick "return removeItem(this)")
+                          ,(string #\u+00d7)))))
+                    ))
+           (div (:class "td-footer")
+                (span (:class "td-count")
+                      "还剩 " (strong () "0") " 项")
+                (ul (:class "td-filters")
+                    (li (:id "td-all" :class "td-selected"
+                             :onclick "return allItem(this)")
+                        "全部")
+                    (li (:id "td-active" :onclick "return activeItem(this)")
+                        "待办")
+                    (li (:id "td-completed" :onclick "return completedItem(this)")
+                        "完成"))
+                (button (:class "td-clear")
+                        "清理完成项")))
+      (footer (:class "info")
+              (p () "双击编辑事项")
+              (p () "创建者: Xt3")
+              (p ()
+                 "源自:" (br)
+                 (a (:href "http://todomvc.com/") "TodoMVC")
+                 (br)
+                 (a (:href "https://www.w3schools.com/howto/howto_js_todolist.asp") "w3schools : How to JS todo list"))))
+    :scripts
+    `(;;,(getf *web-links* :jq-js)
+       (script (:src "js/jquery-3.2.1.min.js"))
+      (script () ,(index-js))))))
+
+#+END_SRC
+*** CSS
+#+BEGIN_SRC lisp :tangle yes
+(defun index-css ()
+  (->css
+   `((* (:margin 0 :padding 0
+                 :box-sizing "border-box"))
+     (body (:background "#f5f5f5" :font-size "14px"))
+     (a (:text-decoration "none"
+                          :color "#bfbfbf"))
+     ("a:hover" (:text-decoration "underline"
+                          :color "#000"))
+     ("::-webkit-input-placeholder" (:color "#e6e6e6"
+                                            :font-style "italic"))
+     (".title"
+      (:text-align "center"
+                   :font-size "50px"
+                   :font-weight "100"
+                   :color "rgba(175, 47, 47, 0.15)"))
+     (".todo" (:margin "0 auto" :max-width "550px"
+                       :box-shadow "0 2px 4px 0 rgba(0, 0, 0, 0.2), 0 25px 50px 0 rgba(0, 0, 0, 0.1)"))
+     (".td-header"
+      (:background "#fff" :position "relative")
+      ("label[for='td-toggle-all']" (:display "none"))
+      (".td-toggle-all" (:position "absolute" 
+                                   :top "13px"
+                                   :left "-12px"
+                                   :width "60px" 
+                                   :height "34px"
+                                   :text-align "center"
+                                   ,@(x-browser "appearance" "none")
+                                   ,@(x-browser "transform" "rotate(90deg)")))
+      (".td-toggle-all::before" (:content "'❯'"
+                                          :font-size "22px"
+                                          :color "#e6e6e6"
+                                          :padding "10px 27px"))
+      (".td-completed.td-toggle-all::before"
+       (:color "#000"))
+      ("#td-add" (:padding "16px 16px 16px 60px"
+                           :box-shadow "inset 0 -2px 1px rgba(0,0,0,0.03)"
+                           :background "rgba(0, 0, 0, 0.003)"
+                           :font-size "24px"
+                           :width "100%"
+                           :border "none")))
+     (".td-content" 
+      (:background "#fff"
+                   :border-top "1px solid #e6e6e6")
+      (".td-list" 
+       (:list-style "none")
+       ;; Edit
+       ("#td-edit" (:padding "15px 15px 15px 55px"
+                             :font-size "24px"
+                             :display "none"
+                             :width "100%"
+                             :border "none"
+                             :border-bottom "1px solid #ededed"))
+       ("#td-edit.td-editing" (:display "block"
+                                        :font-style "italic"))
+       ("li.td-editing" (:display "none"))
+       ;; Items
+       (li (:position "relative"
+                      :font-size "24px"
+                      :border-bottom "1px solid #ededed")
+           (".td-toggle" (:position "absolute" :top 0 :bottom 0
+                                    :margin "auto 0"
+                                    :height "40px"
+                                    ,@(x-browser "appearance" "none")))
+           (".td-toggle" (:cursor "pointer"))
+           (".td-toggle::after" 
+            (:content
+             "url('data:image/svg+xml ;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\" viewBox=\"-10 -18 100 135\"><circle cx=\"50\" cy=\"50\" r=\"50\" fill=\"none\" stroke=\"#ededed\" stroke-width=\"3\"/></svg>')"))
+           (".td-text" (:padding "15px 60px 15px 15px"
+                                 :display "block"
+                                 :margin-left "40px"))
+           (".td-close" (:position "absolute"
+                                   :top "17px" :right "15px"
+                                   :color "#cc9a9a"
+                                   :cursor "pointer"
+                                   :display "none")))
+       ("li:hover" ()
+                   (".td-close" (:display "list-item")))
+       ("li.td-checked" 
+        ()
+        (".td-toggle::after"
+         (:content "url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"40\" viewBox=\"-10 -18 100 135\"><circle cx=\"50\" cy=\"50\" r=\"50\" fill=\"none\" stroke=\"#bddad5\" stroke-width=\"3\"/><path fill=\"#5dc2af\" d=\"M72 25L42 71 27 56l-4 4 20 20 34-52z\"/></svg>')"))
+        (".td-text" (:color "#d9d9d9"
+                            :text-decoration "line-through")))))
+     (".td-footer"
+      (:color "#777" :background "#fff"
+              :position "relative"
+              :padding "10px 15px"
+              :height "40px"
+              :text-align "center")
+      (".td-count" (:float "left"))
+      (".td-filters" (:list-style "none"
+                                  :position "absolute"
+                                  :left 0 :right 0)
+                     (li (:display "inline"
+                                   :margin "3px"
+                                   :padding "3px 7px"
+                                   :border "1px solid rgba(0, 0, 0, 0)"
+                                   :border-radius "3px"))
+                     ("li:hover" (:border-color "rgba(175, 47, 47, 0.1)"))
+                     ("li.td-selected" (:border-color "rgba(175, 47, 47, 0.2)")))
+      (".td-clear" (:float "right"
+                           :border "none"
+                           :background "none"
+                           :font-size "100%"
+                           :font-weight "100")))
+     (".td-footer::before" (:content "''"
+                                     :position "absolute"
+                                     :top 0 :left 0
+                                     :width "100%"
+                                     :height "40px"
+                                     :box-shadow "0 1px 1px rgba(0, 0, 0, 0.2), 0 8px 0 -3px #f6f6f6, 0 9px 1px -3px rgba(0, 0, 0, 0.2), 0 16px 0 -6px #f6f6f6, 0 17px 2px -6px rgba(0, 0, 0, 0.2)"))
+     (".info" (:text-align "center"
+                           :margin-top "30px"
+                           :color "#bfbfbf")))))
+#+END_SRC
+
+*** JS
+#+BEGIN_SRC lisp :tangle yes
+(defun index-js ()
+  (ps*
+   `(defun add-item (e)
+      ;; (chain console (log e))
+      (var obj (@ e target))
+      (case (@ e key)
+        ("Escape"
+         (chain ($ obj) (val "")))
+        ("Enter"
+         ,(jq-ajax "/todo/add"
+                   :data '(create
+                           :td-text (chain ($ obj) (val)))
+                   :suc '(progn
+                          (chain ($ ".td-list") (prepend data))
+                          (chain ($ obj) (val "")))
+                   :err '(alert (@ jqXHR response-text))))
+        (t nil)))
+   
+   `(defun remove-item (obj)
+      (chain window event (stop-propagation))
+      ,(jq-ajax "/todo/remove"
+                :data '(create
+                        :td-id (chain ($ obj) (parent) (attr "id")))
+                :suc '(chain ($ obj) (parent) (remove))
+                :err '(alert (@ jqXHR response-text))))
+   
+   `(defun check-item (obj)
+      (chain window event (stop-propagation))
+      ,(jq-ajax "/todo/check"
+                :data '(create
+                        :td-id (chain ($ obj) (parent) (attr "id")))
+                :suc '(chain ($ obj) (parent) (toggle-class "td-checked"))
+                :err '(alert (@ jqXHR response-text))))
+   `(defun check-all (obj)
+      (chain window event (stop-propagation))
+      (if (chain ($ "#td-edit") (has-class "td-editing"))
+          (edit-cancel ($ "#td-edit")))
+      (if (chain ($ obj) (has-class "td-completed"))
+          ,(jq-ajax "/todo/check/clear"
+                    :suc '(chain
+                           ($ ".td-list")
+                           (children "li")
+                           (remove-class "td-checked"))
+                    :err '(alert (@ jqXHR response-text)))
+          ,(jq-ajax "/todo/check/all"
+                    :suc '(chain
+                           ($ ".td-list")
+                           (children "li")
+                           (add-class "td-checked"))
+                    :err '(alert (@ jqXHR response-text))))
+      (chain ($ obj) (toggle-class "td-completed")))
+   
+   ;; Edit
+   `(defun edit-item (obj)
+      ;; obj === ".td-text"
+      (if (chain ($ obj) (parent) (has-class "td-checked")) return)
+      (if (chain ($ "#td-edit") (has-class "td-editing"))
+          (edit-cancel ($ "#td-edit")))
+      (chain
+       ($ obj)
+       (parent)
+       (toggle-class "td-editing")
+       (after ($ "#td-edit")))
+      (chain
+       ($ "#td-edit")
+       (toggle-class "td-editing")
+       (focus)
+       (val (chain
+             ($ obj) (text)))))
+   `(defun edited-item (e)
+      ;; (chain console (log "edited"))
+      (var obj (@ e target))
+      (case (@ e key)
+        ("Escape"
+         (if (= (chain ($ obj) (val)) "")
+             (edit-cancel obj)
+             (chain ($ obj) (val ""))))
+        ("Enter"
+         ,(jq-ajax "/todo/edited"
+                   :data '(create
+                           :td-id (chain ($ obj) (prev) (attr "id"))
+                           :td-text (chain ($ obj) (val)))
+                   :suc '(progn
+                          (chain
+                           ($ obj) (prev) (children ".td-text") (text data))
+                          (edit-cancel obj))
+                   :err '(alert (@ jqXHR response-text))))
+        (t nil)))
+   `(defun edit-cancel (obj)
+      ;; (chain console (log "edit-cancel"))
+      (chain
+       ($ obj)
+       (toggle-class "td-editing")
+       (blur)
+       (prev) (toggle-class "td-editing")))))
+#+END_SRC
