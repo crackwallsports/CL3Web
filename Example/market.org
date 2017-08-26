@@ -1,0 +1,399 @@
+#+TITLE: Market
+#+AUTHOR: Xt3
+
+* Source
+- surface from: [[https://reactforbeginners.com][https://reactforbeginners.com]]
+
+* Load
+#+BEGIN_SRC lisp
+
+(ql:quickload :ningle)
+(ql:quickload :lack)
+(ql:quickload :parenscript)
+(load "base")
+
+(load "market")
+(mk:start :port 3000)
+(mk:stop)
+
+(defun re-mk ()
+  (if mk::*handler*
+      (mk:stop))
+  (load "market")
+  (mk:start :port 3000))
+#+END_SRC
+* Base
+** Package
+#+BEGIN_SRC lisp :tangle yes
+(in-package :cl-user)
+(defpackage market
+  (:use :cl :ningle :xt3.web.base)
+  (:nicknames :mk)
+  (:import-from :lack.builder
+                :builder)
+  (:import-from :lack.response
+                :response-body
+                :response-status
+                :finalize-response)
+  (:import-from :parenscript
+                :ps
+                :ps*
+                :chain
+                :create
+                :var
+                :@)
+  (:export :start
+           :stop))
+(in-package :market)
+
+#+END_SRC
+** App
+#+BEGIN_SRC lisp :tangle yes
+ 
+(defparameter *app* (make-instance '<app>))
+(defvar *handler* nil)
+
+(defun start (&rest args &key server port debug &allow-other-keys)
+  (declare (ignore server port debug))
+  (when *handler*
+    (restart-case (error "Server is already running.")
+      (restart-server ()
+        :report "Restart the server"
+        (stop))))
+  (setf *handler*
+        ;; (apply #'clack:clackup *app* args)
+        (apply #'clack:clackup
+               (builder
+                (:static
+                 :path (lambda (path)
+                         (if (ppcre:scan "^(?:/images/|/css/|/js/|/robot\\.txt$|/favicon\\.ico$)" path)
+                             path
+                             nil))
+                 :root #P"static/") 
+                ,*app*)
+               args)))
+
+(defun stop ()
+  (prog1
+      (clack:stop *handler*)
+    (setf *handler* nil)))
+
+#+END_SRC
+* Arc
+** Layout
+- 1 Page = 3 column
+  - Goods = 45%
+    - Maket-Logo|Title (Fixed)
+    - Lists (Scroll)
+      - Li = 2 column
+        - Goods-img : [Img]  = 30%
+        - 3 row = 70% 
+          - 1r
+            - Goods-name (L)
+            - Goods-price (R)
+          - Goods-Recommend
+          - Goods-status : [Add-to-Oreder | Sold-out(?:Img)]
+  - Order = 10%
+    - Title : "YOUR OREDER"
+    - Lists (Scroll)
+      - Li = L&R (Hover->Action:"Remove")
+        - Order-goods-quantity Order-goods-name
+        - Order-goods-total
+    - Footer = L&R
+      - "Total"
+      - Order-price-total
+  - Inventory = 45%
+    - Titele : "INVENTORY"
+    - Lists (Scroll)
+      - Li = Table(4r:(3c 1c 1c 1c))
+        - 3c
+          - -goods-name
+          - -total-quantity
+          - -goods-status : ["Fresh!" | "Sold Out!"]
+        - -goods-recommend
+        - -goods-img : [Link]
+        - Action : "Remove"
+** Rel
+- Goods.-name <- Inventory.-goods-name
+- Goods.-recommend <- Inventory.-goods-recommend
+- Goods.-status <- Inventory.-goods-status
+- Goods.-img <- Inventory.-goods-img
+- Goods.-status ->
+  - Order.-goods-quantity
+  - Order.-goods-total
+  - Order.-price-total
+- - Goods.-status <-> Inventory.-total-quantity
+
+* DB
+#+BEGIN_SRC lisp :tangle yes
+;;; Market
+
+;; goods
+(defparameter *mk-goods* (make-hash-table :test 'equal))
+;; order
+(defparameter *mk-order* (make-hash-table :test 'equal))
+;; inventory
+(defparameter *mk-inventory* (make-hash-table :test 'equal))
+#+END_SRC
+
+* Router
+** Base
+#+BEGIN_SRC lisp :tangle yes
+;; Router
+#+END_SRC
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+(defmacro route-> (method path body)
+  `(setf (route *app* ,path :method ,method)
+         ,body))
+
+;; count
+(defparameter *mk-count* 0)
+#+END_SRC
+** /
+#+BEGIN_SRC lisp :tangle yes
+;; GET /
+(route-> :GET "/" 
+  #'(lambda (params)
+      (declare (ignore params))
+      (index ())))
+#+END_SRC
+
+* View
+** Base
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+;; CSS
+(defun x-browser (att val &optional (browser '("webkit" "moz" "ms")))
+  (nconc (let ((ls))
+           (loop for i in browser
+              do (progn (push (make-keyword (format nil "-~A-~A" i att)) ls)
+                        (push val ls)))
+           (nreverse ls))
+         (list (make-keyword att) val)))
+
+;; JS
+(defun jq-ajax (url &key (type "post") (data "") suc err)
+  `(chain
+    $
+    (ajax (create
+           url ,url
+           type ,type
+           data ,data
+           success (lambda (data status)
+                     (if (= status "success")
+                         ,suc))
+           error (lambda (jqXHR textStatus errorThrown)
+                   ,err)))))
+
+#+END_SRC
+*** COMMENT Resource
+#+BEGIN_SRC lisp :tangle yes
+
+#+END_SRC
+*** Layout
+#+BEGIN_SRC lisp :tangle yes
+(defun layout-template (args &key (title "标题") links head-rest content scripts)
+  (declare (ignore args))
+  `(,(doctype)
+     (html (:lang "en")
+           (head ()
+                 (meta (:charset "utf-8"))
+                 (meta (:name "viewport"
+                              :content "width=device-width, initial-scale=1, shrink-to-fit=no"))
+                 (meta (:name "description" :content "?"))
+                 (meta (:name "author" :content "Xt3"))
+                 (title nil ,title)
+                 ,@links
+                 ,@head-rest)
+           (body ()
+                 ,@content
+                 ,@scripts))))
+
+#+END_SRC
+** Index
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun index (args)
+  (->html
+   (layout-template
+    args
+    :title (or (getf args :title) "我的市场")
+    :links `()
+    :head-rest
+    `((style () ,(index-css)))
+    :content
+    `((div (:class "market")
+           ,(goods-htm)
+           ,(order-htm)
+           ,(inventory-htm)))
+    :scripts
+    `(;;,(getf *web-links* :jq-js)
+       (script (:src "js/jquery-3.2.1.min.js"))
+      (script () ,(index-js))))))
+
+#+END_SRC
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun index-css ()
+  (->css
+   `((* (:margin 0 :padding 0
+                 :box-sizing "border-box"
+                 :outline "none"))
+     (html (:height "100vh"))
+     (body (:background "#f5f5f5" :font-size "14px"
+                        :height "100%"
+                        :padding "50px"))
+     (a (:text-decoration "none"
+                          :color "#bfbfbf"))
+     ("a:hover" (:text-decoration "underline"
+                                  :color "#000"))
+     
+     ;; Float
+     (".left" (:float "left"))
+     (".right" (:float "right"))
+     
+     ;; Gird
+     ;; (loop for i from 1 to 12
+     ;;    collect
+     ;;      `(,(format nil ".w-~a" i)
+     ;;         (:width ,(format nil "calc(~a*100%/12)" i))))
+     (".w-1" (:width "calc(1*100%/12)" :float "left"))
+     (".w-2" (:width "calc(2*100%/12)" :float "left"))
+     (".w-3" (:width "calc(3*100%/12)" :float "left"))
+     (".w-4" (:width "calc(4*100%/12)" :float "left"))
+     (".w-5" (:width "calc(5*100%/12)" :float "left"))
+     (".w-6" (:width "calc(6*100%/12)" :float "left"))
+     (".w-7" (:width "calc(7*100%/12)" :float "left"))
+     (".w-8" (:width "calc(8*100%/12)" :float "left"))
+     (".w-9" (:width "calc(9*100%/12)" :float "left"))
+     (".w-10" (:width "calc(10*100%/12)" :float "left"))
+     (".w-11" (:width "calc(11*100%/12)" :float "left"))
+     (".w-12" (:width "calc(12*100%/12)" :float "left"))
+     
+     ;; ul
+     ("ul" (:list-style "none"))
+     
+     ;; Market
+     (".market" (:background "white" :border "2px solid black"
+                             :height "100%"))
+     ,(goods-css)
+     ,(order-css)
+     ,(inventory-css))))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun index-js ()
+  (goods-js)
+  (order-js)
+  (inventory-js))
+#+END_SRC
+** -----
+** Goods
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun goods-htm ()
+  `(div (:class "goods w-5")
+                (h1 (:class "title") "市场")
+                (ul (:class "list")
+                    ;; Item
+                    (li ()
+                        (img (:class "img w-4" :src "#" :alt "Goods"))
+                        (div (:class "content w-8")
+                             (span (:class "name left") "商品名")
+                             (span (:class "price right") "价格")
+                             (p (:class "recommend") "非常好")
+                             (span (:class "status") "订购|卖完了"))))))
+#+END_SRC
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun goods-css ()
+  '(".goods" (:border "1px solid"
+              :height "100%"
+              :overflow "scroll")
+    (".title" (:font-size "50px"
+               :font-weight "100"
+               :border-bottom "1px solid"
+               :margin "0px 10px"
+               :text-align "center"
+               :height "100px"))
+    (".list" (:margin "0 10px")
+     ("li" (:border-top "1px solid"
+                        :border-bottom "1px solid"
+                        :margin "2px 0"
+                        :min-height "100px")
+      ("img" (:background "white")))))
+  )
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun goods-js ()
+  (ps nil))
+#+END_SRC
+** Order
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun order-htm ()
+`(div (:class "order w-2")
+                (h1 (:class "title") "订单")
+                (ul (:class "list")
+                    ;; Item
+                    (li ()
+                        (div (:class "left")
+                             (span (:class "quantity left") "数量")
+                             (span (:class "name left") "商品名")
+                             (span (:class "remove")))
+                        (span (:class "n-price right") "价格")))
+                (div (:class "footer")
+                     "总价"
+                     (span (:class "total-price right") "0.00"))))
+
+#+END_SRC
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun order-css ()
+  '(".order" ()
+    (".title" (:font-size "20px")))
+)
+
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun order-js ()
+  (ps nil))
+
+#+END_SRC
+** Inventory
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun inventory-htm ()
+`(div (:class "inventory w-5")
+                (h1 (:class "title") "库存")
+                (ul (:class "list")
+                    ;; Item
+                    (li ()
+                        (div ()
+                             (span (:class "name w-4") "商品名")
+                             (span (:class "quantity w-4") "数量")
+                             (span (:class "status") "状态"))
+                        (div (:class "recommend") "推荐")
+                        (div (:class "img-link") "http://img.jpg")
+                        (span (:class "remove")))))
+)
+#+END_SRC
+
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun inventory-css ()
+  '(".inventory" ()
+    (".title" (:font-size "20px"))))
+
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun inventory-js ()
+  (ps nil))
+
+#+END_SRC
