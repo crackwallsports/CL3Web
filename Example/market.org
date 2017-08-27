@@ -6,6 +6,7 @@
 
 * Load
 #+BEGIN_SRC lisp
+(in-package :mk)
 
 (ql:quickload :ningle)
 (ql:quickload :lack)
@@ -248,28 +249,23 @@
                           :color "#bfbfbf"))
      ("a:hover" (:text-decoration "underline"
                                   :color "#000"))
+     ("::-webkit-input-placeholder" (:color "#e6e6e6"
+                                            :font-style "italic"))
+     ("input" (:border "none"
+                       :font-size "14px"
+                       :padding "1px 2px 1px 5px"))
      
      ;; Float
      (".left" (:float "left"))
      (".right" (:float "right"))
      
      ;; Gird
-     ;; (loop for i from 1 to 12
-     ;;    collect
-     ;;      `(,(format nil ".w-~a" i)
-     ;;         (:width ,(format nil "calc(~a*100%/12)" i))))
-     (".w-1" (:width "calc(1*100%/12)" :float "left"))
-     (".w-2" (:width "calc(2*100%/12)" :float "left"))
-     (".w-3" (:width "calc(3*100%/12)" :float "left"))
-     (".w-4" (:width "calc(4*100%/12)" :float "left"))
-     (".w-5" (:width "calc(5*100%/12)" :float "left"))
-     (".w-6" (:width "calc(6*100%/12)" :float "left"))
-     (".w-7" (:width "calc(7*100%/12)" :float "left"))
-     (".w-8" (:width "calc(8*100%/12)" :float "left"))
-     (".w-9" (:width "calc(9*100%/12)" :float "left"))
-     (".w-10" (:width "calc(10*100%/12)" :float "left"))
-     (".w-11" (:width "calc(11*100%/12)" :float "left"))
-     (".w-12" (:width "calc(12*100%/12)" :float "left"))
+     ,@(loop for i from 1 to 12
+          collect
+            `(,(format nil ".w-~a" i)
+               (:width ,(format nil "calc(~a*100%/12)" i)
+                       :float "left")))
+     ;; (".w-1" (:width "calc(1*100%/12)" :float "left")) ...
      
      ;; ul
      ("ul" (:list-style "none"))
@@ -294,16 +290,18 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-htm ()
   `(div (:class "goods w-5")
-                (h1 (:class "title") "市场")
-                (ul (:class "list")
-                    ;; Item
-                    (li ()
-                        (img (:class "img w-4" :src "#" :alt "Goods"))
-                        (div (:class "content w-8")
-                             (span (:class "name left") "商品名")
-                             (span (:class "price right") "价格")
-                             (p (:class "recommend") "非常好")
-                             (span (:class "status") "订购|卖完了"))))))
+        (h1 (:class "title") "市场")
+        (ul (:class "list")
+            ;; Item
+            ,@(loop repeat 10
+                 collect
+                   '(li ()
+                     (img (:class "img w-4" :src "#" :alt "Goods"))
+                     (div (:class "content w-8")
+                      (span (:class "name left") "商品名")
+                      (span (:class "price right") "价格")
+                      (p (:class "recommend") "非常好")
+                      (span (:class "status") "订购|卖完了")))))))
 #+END_SRC
 
 *** Css
@@ -323,8 +321,12 @@
                         :border-bottom "1px solid"
                         :margin "2px 0"
                         :min-height "100px")
-      ("img" (:background "white")))))
-  )
+      ("img" (:border "1px dashed"
+                      :margin "3px 0"
+                      :height "90px"))
+      (".content" (:padding "3px")
+                  (".recommend" (:clear "both"))
+                  (".status" (:border "1px solid")))))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
@@ -335,28 +337,49 @@
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
 (defun order-htm ()
-`(div (:class "order w-2")
-                (h1 (:class "title") "订单")
-                (ul (:class "list")
-                    ;; Item
-                    (li ()
-                        (div (:class "left")
-                             (span (:class "quantity left") "数量")
-                             (span (:class "name left") "商品名")
-                             (span (:class "remove")))
-                        (span (:class "n-price right") "价格")))
-                (div (:class "footer")
-                     "总价"
-                     (span (:class "total-price right") "0.00"))))
-
+  `(div (:class "order w-2")
+        (h1 (:class "title") "订单")
+        (div (:class "header")
+             (div (:class "left")
+                  (span (:class "quantity") "数量")
+                  (span (:class "name") "商品名"))
+             (span (:class "n-price right") "价格"))
+        (ul (:class "list")
+            ;; Item
+            ,@(loop repeat 10
+                 collect
+                   `(li ()
+                       (div (:class "info w-8")
+                            (span (:class "quantity") "1kg")
+                            (span (:class "name") "仙丹")
+                            (span (:class "remove") "x"))
+                       (span (:class "n-price w-4") "$.99"))))
+        (div (:class "footer")
+             "总价"
+             (span (:class "total-price right") "0.00"))))
 #+END_SRC
 *** Css
 #+BEGIN_SRC lisp :tangle yes
 (defun order-css ()
-  '(".order" ()
-    (".title" (:font-size "20px")))
-)
-
+  '(".order" (:padding "10px"
+              :height "100%"
+              :border "1px solid"
+              :overflow "scroll")
+    (".title" (:font-size "20px"
+               :text-align "center"
+               :margin-bottom "20px"))
+    (".header" (:border-bottom "1px solid"
+                :height "20px"))
+    (".list" ()
+     ("li" (:clear "both"
+                   :height "50px"
+                   :border-bottom "1px dashed"
+                   :position "relative"
+                   :display "flex"
+                   :align-items "center")
+      (".n-price" (:text-align "right"))))
+    (".footer" (:clear "both"
+                :border-top "1px solid"))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
@@ -368,27 +391,61 @@
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
 (defun inventory-htm ()
-`(div (:class "inventory w-5")
-                (h1 (:class "title") "库存")
-                (ul (:class "list")
-                    ;; Item
-                    (li ()
-                        (div ()
-                             (span (:class "name w-4") "商品名")
-                             (span (:class "quantity w-4") "数量")
-                             (span (:class "status") "状态"))
-                        (div (:class "recommend") "推荐")
-                        (div (:class "img-link") "http://img.jpg")
-                        (span (:class "remove")))))
-)
+  `(div (:class "inventory w-5")
+        (h1 (:class "title") "库存")
+        (ul (:class "list")
+            ;; Item
+            ,@(loop repeat 10
+                 collect
+                   '(li (:class "table")
+                     (div (:class "row")
+                      (input (:class "name w-6"
+                                     :type "text"
+                                     :id "name"
+                                     :placeholder "商品名"))
+                      (input (:class "quantity w-4"
+                                     :type "text"
+                                     :id "quantity"
+                                     :placeholder "数量"))
+                      (select (:class "status w-2"
+                                      :id "status" :name "status")
+                        (option (:value "fresh") "有存货")
+                        (option (:value "out") "卖完")))
+                     (div (:class "recommend row")
+                      (input (:type "text"
+                                    :id "recommend"
+                                    :placeholder "推荐")))
+                     (div (:class "img-link row")
+                      (input (:type "text"
+                                    :id "img-link"
+                                    :placeholder "http://img.jpg")))
+                     (div (:class "remove row")
+                      (span () "移除")))))))
 #+END_SRC
-
 
 *** Css
 #+BEGIN_SRC lisp :tangle yes
 (defun inventory-css ()
-  '(".inventory" ()
-    (".title" (:font-size "20px"))))
+  '(".inventory" (:border "1px solid"
+                  :height "100%"
+                  :padding "10px"
+                  :overflow "scroll")
+    (".title" (:font-size "20px"
+               :text-align "center"
+               :margin-bottom "20px"))
+    (".list" ()
+     (".table" (:margin "10px 0"
+                        :border "1px solid"
+                        :height "120px")
+      (".row" (:border-bottom "1px solid"
+                              :height "20px")
+              (".name" (:border-right "1px solid"))
+              (".quantity" (:border-right "1px solid")))
+      (".recommend" (:height "50px"))
+      (".img-link" (:height "30px"))
+      (".remove" (:text-align "center"
+                              :cursor "pointer"))
+      (".remove:hover" (:text-decoration "underline"))))))
 
 #+END_SRC
 *** Js
