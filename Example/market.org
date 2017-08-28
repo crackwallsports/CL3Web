@@ -6,16 +6,20 @@
 
 * Load
 #+BEGIN_SRC lisp
-(in-package :mk)
-
 (ql:quickload :ningle)
 (ql:quickload :lack)
+;; JS
 (ql:quickload :parenscript)
+;; JSON
+(ql:quickload :jonathan)
+;; Helper
 (load "base")
 
 (load "market")
 (mk:start :port 3000)
 (mk:stop)
+
+(in-package :mk)
 
 (defun re-mk ()
   (if mk::*handler*
@@ -33,6 +37,7 @@
   (:import-from :lack.builder
                 :builder)
   (:import-from :lack.response
+                :response-headers
                 :response-body
                 :response-status
                 :finalize-response)
@@ -42,7 +47,10 @@
                 :chain
                 :create
                 :var
-                :@)
+                :@
+                :getprop)
+  (:import-from :jonathan
+                :to-json)
   (:export :start
            :stop))
 (in-package :market)
@@ -159,6 +167,29 @@
       (declare (ignore params))
       (index ())))
 #+END_SRC
+** -----
+** /test
+#+BEGIN_SRC lisp :tangle yes
+;; POST /test
+(route->
+    :POST "/test" 
+    #'(lambda (params)
+        (declare (ignore params))
+        (setf (getf (response-headers *response*) :content-type)
+              "application/json")
+        (to-json
+         `(:|target| ".goods .list"
+            :|action| "prepend"
+            :|content| ,(->html
+                         '(li ()
+                           (img (:class "img w-4" :src "#" :alt "Goods"))
+                           (div (:class "content w-8")
+                            (span (:class "name left") "仙丹")
+                            (span (:class "price right") "¥1.99")
+                            (p (:class "recommend") "灵丹妙药 食之升仙")
+                            (span (:class "status") "订购"))))))))
+
+#+END_SRC
 
 * View
 ** Base
@@ -174,7 +205,8 @@
          (list (make-keyword att) val)))
 
 ;; JS
-(defun jq-ajax (url &key (type "post") (data "") suc err)
+(defun jq-ajax (url &key (type "post") (data "") suc
+                      (err '(alert (@ jqXHR response-text))))
   `(chain
     $
     (ajax (create
@@ -280,9 +312,10 @@
 *** Js
 #+BEGIN_SRC lisp :tangle yes
 (defun index-js ()
-  (goods-js)
-  (order-js)
-  (inventory-js))
+  (ps*
+   (goods-js)
+   (order-js)
+   (inventory-js)))
 #+END_SRC
 ** -----
 ** Goods
@@ -290,7 +323,7 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-htm ()
   `(div (:class "goods w-5")
-        (h1 (:class "title") "市场")
+        (h1 (:class "title" :onclick "addGoods()") "市场")
         (ul (:class "list")
             ;; Item
             ,@(loop repeat 10
@@ -331,7 +364,28 @@
 *** Js
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-js ()
-  (ps nil))
+  `(defun add-goods ()
+     ,(jq-ajax
+       "/test"
+       :suc '(progn
+              (let ((target (@ data "target"))
+                    (action (@ data "action"))
+                    (content (@ data "content")))
+                ((getprop ($ target) action) content))))))
+
+;; $(".goods .list")["prepend"]("...")
+;; $(data["target"])[data["action"]](data["content"])
+;; ---
+;; (ps ($ (@ data "target")))
+;; (ps (@ ($ (@ data "target")) (@ data "action")))
+;; (ps ((@ ($ (@ data "target")) (@ data "action")) (@ data "content") ))
+;; "$(data['target'])[data['action']](data['content']);"
+;; "$(data['target'])[data['action']];"
+;; "$(data['target']);"
+
+;; (ps ((ps:getprop ($ target) action) content))
+;; "$(target)[action](content);"
+
 #+END_SRC
 ** Order
 *** Htm
