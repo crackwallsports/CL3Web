@@ -46,6 +46,7 @@
                 :ps*
                 :chain
                 :create
+                :new
                 :var
                 :@
                 :getprop)
@@ -168,11 +169,11 @@
       (index ())))
 #+END_SRC
 ** -----
-** /test
+** COMMENT /test/json
 #+BEGIN_SRC lisp :tangle yes
-;; POST /test
+;; POST /test/json
 (route->
-    :POST "/test" 
+    :POST "/test/json" 
     #'(lambda (params)
         (declare (ignore params))
         (setf (getf (response-headers *response*) :content-type)
@@ -190,6 +191,26 @@
                             (span (:class "status") "订购"))))))))
 
 #+END_SRC
+
+** COMMENT /test/chart
+#+BEGIN_SRC lisp :tangle yes
+;; POST /test/chart
+(route->
+    :POST "/test/chart" 
+    #'(lambda (params)
+        (declare (ignore params))
+        (setf (getf (response-headers *response*) :content-type)
+              "application/json")
+        (to-json
+         `(:|target| ".goods .list"
+            :|action| "prepend"
+            :|content| ,(->html
+                         '(canvas (:id "ichart"
+                                   :width "200"
+                                   :height "200")))))))
+
+#+END_SRC
+
 
 * View
 ** Base
@@ -262,7 +283,8 @@
            ,(inventory-htm)))
     :scripts
     `(;;,(getf *web-links* :jq-js)
-       (script (:src "js/jquery-3.2.1.min.js"))
+      (script (:src "js/jquery-3.2.1.min.js"))
+      ;; (script (:src "js/Chart.bundle.min.js"))
       (script () ,(index-js))))))
 
 #+END_SRC
@@ -363,28 +385,55 @@
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
+(defun goods-js ())
+#+END_SRC
+**** COMMENT test/json
+#+BEGIN_SRC lisp :tangle yes
 (defun goods-js ()
   `(defun add-goods ()
      ,(jq-ajax
-       "/test"
+       "/test/json"
        :suc '(progn
               (let ((target (@ data "target"))
                     (action (@ data "action"))
                     (content (@ data "content")))
                 ((getprop ($ target) action) content))))))
-
-;; $(".goods .list")["prepend"]("...")
-;; $(data["target"])[data["action"]](data["content"])
-;; ---
-;; (ps ($ (@ data "target")))
-;; (ps (@ ($ (@ data "target")) (@ data "action")))
-;; (ps ((@ ($ (@ data "target")) (@ data "action")) (@ data "content") ))
-;; "$(data['target'])[data['action']](data['content']);"
-;; "$(data['target'])[data['action']];"
-;; "$(data['target']);"
-
-;; (ps ((ps:getprop ($ target) action) content))
-;; "$(target)[action](content);"
+#+END_SRC
+**** COMMENT test/chart
+#+BEGIN_SRC lisp :tangle yes
+(defun js-chart (id)
+  `(new (*chart
+         ;; ctx
+         (chain
+          document (get-element-by-id ,id) (get-context "2d"))
+         ;; data
+         (create
+          type "bar"
+          data (create
+                labels '("Red" "Blue")
+                datasets `(,(create
+                             label "# of Votes"
+                             data '(12 19 3)
+                             background-color '("rgba(255, 99, 132, 0.2)"
+                                                "rgba(54, 162, 235, 0.2)")
+                             border-color '("rgba(255,99,132,1)"
+                                            "rgba(54, 162, 235, 1)")
+                             border-width 1)))
+          options (create
+                   scales (create
+                           yAxes `(,(create
+                                     ticks (create
+                                            begin-at-zero true)))))))))
+(defun goods-js ()
+  `(defun add-goods ()
+     ,(jq-ajax
+       "/test/chart"
+       :suc `(progn
+               (let ((target (@ data "target"))
+                     (action (@ data "action"))
+                     (content (@ data "content")))
+                 ((getprop ($ target) action) content))
+               ,(js-chart "ichart")))))
 
 #+END_SRC
 ** Order
@@ -407,7 +456,7 @@
                             (span (:class "quantity") "1kg")
                             (span (:class "name") "仙丹")
                             (span (:class "remove") "x"))
-                       (span (:class "n-price w-4") "$.99"))))
+                       (span (:class "n-price w-4") "¥1.99"))))
         (div (:class "footer")
              "总价"
              (span (:class "total-price right") "0.00"))))
@@ -437,8 +486,7 @@
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
-(defun order-js ()
-  (ps nil))
+(defun order-js ())
 
 #+END_SRC
 ** Inventory
@@ -504,7 +552,6 @@
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
-(defun inventory-js ()
-  (ps nil))
+(defun inventory-js ())
 
 #+END_SRC
