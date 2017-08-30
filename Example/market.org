@@ -123,6 +123,8 @@
         - -goods-recommend
         - -goods-img : [Link]
         - Action : "Remove"
+
+   
 ** Rel
 - Goods.-name <- Inventory.-goods-name
 - Goods.-recommend <- Inventory.-goods-recommend
@@ -137,13 +139,34 @@
 * DB
 #+BEGIN_SRC lisp :tangle yes
 ;;; Market
+;; Inventory-array = name quantity price recommend img-link
+;; Goods-hs = name index-in-inventory
+;; Order-ht = name : (id quantity price*num) 
 
 ;; goods
 (defparameter *mk-goods* (make-hash-table :test 'equal))
 ;; order
 (defparameter *mk-order* (make-hash-table :test 'equal))
 ;; inventory
-(defparameter *mk-inventory* (make-hash-table :test 'equal))
+(defparameter *mk-inventory*
+  (make-array 0
+              :fill-pointer t
+              :adjustable t))
+
+(loop for i from 0 to 10 do
+     (let ((name (concat "商品-" i))
+           (rcd (concat "推荐-" i))
+           (il (concat "http://img-" i ".jpg")))
+       (vector-push-extend
+        `(,name
+          100
+          1.99
+          ,rcd
+          ,il)
+        ,*mk-inventory*)
+       (setf (gethash name *mk-goods*) i)))
+
+
 #+END_SRC
 
 * Router
@@ -153,23 +176,68 @@
 #+END_SRC
 *** Helper
 #+BEGIN_SRC lisp :tangle yes
+;; Router
 (defmacro route-> (method path body)
   `(setf (route *app* ,path :method ,method)
          ,body))
 
-;; count
-(defparameter *mk-count* 0)
+;; Redundancy Count
+(defparameter *rdd-count* 0)
+
+;; JSON
+(defun <-json (&rest rest)
+  (setf (getf (response-headers *response*) :content-type)
+                "application/json")
+  (to-json rest))
 #+END_SRC
 ** /
 #+BEGIN_SRC lisp :tangle yes
 ;; GET /
 (route-> :GET "/" 
-  #'(lambda (params)
-      (declare (ignore params))
-      (index ())))
+         #'(lambda (params)
+             (declare (ignore params))
+             (index ())))
+#+END_SRC
+** /goods
+*** Add
+#+BEGIN_SRC lisp :tangle yes
+;; POST /goods/add
+(route->
+    :POST "/goods/add" 
+    #'(lambda (params)
+        (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
+               (i (gethash name *mk-goods*)))
+          (if i
+              (let ((price (if i (third (aref *mk-inventory* i))))
+                     (item (gethash name *mk-order*))
+                     (target ".order .list")
+                     (action "")
+                     (content ""))
+                (cond
+                  (item
+                   (incf (second item))
+                   (incf (third item) price)
+                   (setf target (format nil "~A #~A" target (first item))
+                         action "replaceWith"))
+                  (t
+                   (setf item (list (format nil "~D~3,'0D"
+                                       (get-universal-time)
+                                       (incf *rdd-count*))
+                               1
+                               price)
+                         (gethash name *mk-order*) item
+                         action "prepend")))
+                (setf content (->html (order-item name item)))
+                (<-json
+                 :|target| target
+                 :|action| action
+                 :|content| content))))))
+
+
 #+END_SRC
 ** -----
-** COMMENT /test/json
+** Test
+*** COMMENT /test/json
 #+BEGIN_SRC lisp :tangle yes
 ;; POST /test/json
 (route->
@@ -192,7 +260,7 @@
 
 #+END_SRC
 
-** COMMENT /test/chart
+*** COMMENT /test/chart
 #+BEGIN_SRC lisp :tangle yes
 ;; POST /test/chart
 (route->
@@ -344,19 +412,26 @@
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-htm ()
-  `(div (:class "goods w-5")
-        (h1 (:class "title" :onclick "addGoods()") "市场")
+  `(div (:class "goods left")
+        (h1 (:class "title") "市场")
         (ul (:class "list")
-            ;; Item
-            ,@(loop repeat 10
+            ;; Items
+            ,@(loop for i from 0 below (length *mk-inventory*)
                  collect
-                   '(li ()
-                     (img (:class "img w-4" :src "#" :alt "Goods"))
-                     (div (:class "content w-8")
-                      (span (:class "name left") "商品名")
-                      (span (:class "price right") "价格")
-                      (p (:class "recommend") "非常好")
-                      (span (:class "status") "订购|卖完了")))))))
+                   (destructuring-bind (name num price rcd il) (aref *mk-inventory* i)
+                     `(li ()
+                          (img (:class "img w-4" :src "#" :alt "Goods"))
+                          (div (:class "content w-8")
+                               (span (:class "name left")
+                                     ,(format nil "~A" name))
+                               (span (:class "price right")
+                                     ,(format nil "¥~A" price))
+                               (p (:class "recommend")
+                                  ,(format nil "~A" rcd))
+                               (span (:class "status"
+                                             :onclick "addGoods(this)")
+                                     "订购"))))))))
+
 #+END_SRC
 
 *** Css
@@ -364,7 +439,8 @@
 (defun goods-css ()
   '(".goods" (:border "1px solid"
               :height "100%"
-              :overflow "scroll")
+              :overflow "scroll"
+              :width "35%")
     (".title" (:font-size "50px"
                :font-weight "100"
                :border-bottom "1px solid"
@@ -381,11 +457,29 @@
                       :height "90px"))
       (".content" (:padding "3px")
                   (".recommend" (:clear "both"))
-                  (".status" (:border "1px solid")))))))
+                  (".status" (:border "1px solid orange"
+                                      :border-radius "4px"
+                                      :color "orange"
+                                      :cursor "pointer"
+                                      :padding "2px"))
+                  (".status:hover" (:background "orange"
+                                                :color "white")))))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
-(defun goods-js ())
+(defun goods-js ()
+  `(defun add-goods (obj)
+     ,(jq-ajax
+       "/goods/add"
+       :data '(create 
+               :goods-name (chain 
+                            ($ obj) (parent) (children ".name")
+                            (text)))
+       :suc '(progn
+              (let ((target (@ data "target"))
+                    (action (@ data "action"))
+                    (content (@ data "content")))
+                ((getprop ($ target) action) content))))))
 #+END_SRC
 **** COMMENT test/json
 #+BEGIN_SRC lisp :tangle yes
@@ -439,27 +533,46 @@
 ** Order
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
+(defun order-item (name item)
+  (destructuring-bind (id num price) item
+      `(li (:id ,id)
+           (div (:class "info w-8")
+                (span (:class "quantity")
+                      ,(format nil "~A个" num))
+                (span (:class "name")
+                      ,(format nil "~A" name))
+                (span (:class "remove") "x"))
+           (span (:class "n-price w-4")
+                 ,(format nil "¥~,2f" price)))))
+
 (defun order-htm ()
-  `(div (:class "order w-2")
-        (h1 (:class "title") "订单")
-        (div (:class "header")
-             (div (:class "left")
-                  (span (:class "quantity") "数量")
-                  (span (:class "name") "商品名"))
-             (span (:class "n-price right") "价格"))
-        (ul (:class "list")
-            ;; Item
-            ,@(loop repeat 10
-                 collect
-                   `(li ()
-                       (div (:class "info w-8")
-                            (span (:class "quantity") "1kg")
-                            (span (:class "name") "仙丹")
-                            (span (:class "remove") "x"))
-                       (span (:class "n-price w-4") "¥1.99"))))
-        (div (:class "footer")
-             "总价"
-             (span (:class "total-price right") "0.00"))))
+  (let ((ttp 0.00))
+    `(div (:class "order left")
+          (h1 (:class "title") "订单")
+          (div (:class "header")
+               (span (:class "quantity w-3") "数量")
+               (span (:class "name w-6") "商品名")
+               (span (:class "n-price w-3") "价格"))
+          (ul (:class "list")
+              ;; Item
+              ,@(let ((order))
+                  (maphash (lambda (k v)
+                             (push (order-item k v) order)
+                             (incf ttp (third v)))
+                           ,*mk-order*)
+                  order))
+          (div (:class "footer")
+               "总价"
+               (span (:class "total-price right")
+                     ,(format nil "¥~,2f" ttp))))))
+
+;; (let ((order))
+;;   (maphash (lambda (k v)
+;;              (push (format nil "~A ~f" k v)
+;;                    order))
+;;            *mk-order*)
+;;   order)
+
 #+END_SRC
 *** Css
 #+BEGIN_SRC lisp :tangle yes
@@ -467,7 +580,8 @@
   '(".order" (:padding "10px"
               :height "100%"
               :border "1px solid"
-              :overflow "scroll")
+              :overflow "scroll"
+              :width "30%")
     (".title" (:font-size "20px"
                :text-align "center"
                :margin-bottom "20px"))
@@ -480,8 +594,13 @@
                    :position "relative"
                    :display "flex"
                    :align-items "center")
-      (".n-price" (:text-align "right"))))
+      (".quantity" (:margin-right "10px"))
+      (".remove" (:display "none"))
+      (".n-price" (:text-align "right")))
+     ("li:hover" ()
+      (".remove" (:display "inline-block" :color "red"))))
     (".footer" (:clear "both"
+                :margin-top "5px"
                 :border-top "1px solid"))))
 #+END_SRC
 *** Js
@@ -493,36 +612,37 @@
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
 (defun inventory-htm ()
-  `(div (:class "inventory w-5")
+  `(div (:class "inventory left")
         (h1 (:class "title") "库存")
         (ul (:class "list")
-            ;; Item
-            ,@(loop repeat 10
+            ;; Edit Input
+            (input (:class "edit"
+                           :type "text"
+                           :id "edit"
+                           :placeholder "???"))
+            ;; Items
+            ,@(loop for i from 0 below (length *mk-inventory*)
                  collect
-                   '(li (:class "table")
-                     (div (:class "row")
-                      (input (:class "name w-6"
-                                     :type "text"
-                                     :id "name"
-                                     :placeholder "商品名"))
-                      (input (:class "quantity w-4"
-                                     :type "text"
-                                     :id "quantity"
-                                     :placeholder "数量"))
-                      (select (:class "status w-2"
-                                      :id "status" :name "status")
-                        (option (:value "fresh") "有存货")
-                        (option (:value "out") "卖完")))
-                     (div (:class "recommend row")
-                      (input (:type "text"
-                                    :id "recommend"
-                                    :placeholder "推荐")))
-                     (div (:class "img-link row")
-                      (input (:type "text"
-                                    :id "img-link"
-                                    :placeholder "http://img.jpg")))
-                     (div (:class "remove row")
-                      (span () "移除")))))))
+                   (destructuring-bind (name num price rcd il) (aref *mk-inventory* i)
+                     `(li (:class "table")
+                          (div (:class "row")
+                               (span (:class "name col w-6")
+                                     ,(format nil "~A" name))
+                               (span (:class "quantity col w-2")
+                                     ,(format nil "~A个" num))
+                               (span (:class "price col w-2")
+                                     ,(format nil "¥~A" price))
+                               (span (:class "col w-2")
+                                     (select (:class "status"
+                                                     :id "status" :name "status")
+                                       (option (:value "fresh") "有存货")
+                                       (option (:value "out") "卖完"))))
+                          (div (:class "recommend row")
+                               ,(format nil "~A" rcd))
+                          (div (:class "img-link row")
+                               ,(format nil "~A" il))
+                          (div (:class "remove row")
+                               (span () "移除"))))))))
 #+END_SRC
 
 *** Css
@@ -531,20 +651,27 @@
   '(".inventory" (:border "1px solid"
                   :height "100%"
                   :padding "10px"
-                  :overflow "scroll")
+                  :overflow "scroll"
+                  :width "35%")
     (".title" (:font-size "20px"
                :text-align "center"
                :margin-bottom "20px"))
     (".list" ()
+     (".edit" (:display "none"))
+     (".editing" (:display "block"))
      (".table" (:margin "10px 0"
                         :border "1px solid"
                         :height "120px")
       (".row" (:border-bottom "1px solid"
                               :height "20px")
-              (".name" (:border-right "1px solid"))
-              (".quantity" (:border-right "1px solid")))
-      (".recommend" (:height "50px"))
-      (".img-link" (:height "30px"))
+              (".col" (:border-right "1px solid"))
+              ;; (".name" (:border-right "1px solid"))
+              ;; (".quantity" (:border-right "1px solid"))
+              ;; (".price" (:border-right "1px solid"))
+              )
+      (".recommend" (:height "50px" :padding "2px"))
+      (".img-link" (:height "30px" :padding "0 2px"
+                            :display "flex" :align-items "center" ))
       (".remove" (:text-align "center"
                               :cursor "pointer"))
       (".remove:hover" (:text-decoration "underline"))))))
