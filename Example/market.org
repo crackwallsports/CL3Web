@@ -147,6 +147,7 @@
 (defparameter *mk-goods* (make-hash-table :test 'equal))
 ;; order
 (defparameter *mk-order* (make-hash-table :test 'equal))
+(defparameter *mk-order-ttp* 0)         ; total-price
 ;; inventory
 (defparameter *mk-inventory*
   (make-array 0
@@ -185,10 +186,12 @@
 (defparameter *rdd-count* 0)
 
 ;; JSON
-(defun <-json (&rest rest)
+(defun <-json (plist)
   (setf (getf (response-headers *response*) :content-type)
                 "application/json")
-  (to-json rest))
+  (to-json plist))
+
+
 #+END_SRC
 ** /
 #+BEGIN_SRC lisp :tangle yes
@@ -206,34 +209,69 @@
     :POST "/goods/add" 
     #'(lambda (params)
         (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
-               (i (gethash name *mk-goods*)))
-          (if i
-              (let ((price (if i (third (aref *mk-inventory* i))))
-                     (item (gethash name *mk-order*))
-                     (target ".order .list")
-                     (action "")
-                     (content ""))
-                (cond
-                  (item
-                   (incf (second item))
-                   (incf (third item) price)
-                   (setf target (format nil "~A #~A" target (first item))
-                         action "replaceWith"))
-                  (t
-                   (setf item (list (format nil "~D~3,'0D"
-                                       (get-universal-time)
-                                       (incf *rdd-count*))
-                               1
-                               price)
-                         (gethash name *mk-order*) item
-                         action "prepend")))
-                (setf content (->html (order-item name item)))
-                (<-json
-                 :|target| target
-                 :|action| action
-                 :|content| content))))))
+               (i (gethash name *mk-goods*))
+               (jqies ()))
+          (cond
+            (i
+             ;; Add|Replace: goods 
+             (let ((price (third (aref *mk-inventory* i)))
+                   (item (gethash name *mk-order*))
+                   (action "")
+                   (jqi (make-jqi :target ".order .list")))
+                
+               (cond
+                 (item
+                  (incf (second item))
+                  (incf (third item) price)
+                  (setf (jqi-target jqi) (format nil ".order .list #~A" (first item))
+                        action "replaceWith"))
+                 (t
+                  (setf item (list (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*))
+                                   1
+                                   price)
+                        (gethash name *mk-order*) item
+                        action "prepend")))
+               (add-jqi-m (make-jqi-m :action action
+                                      :content (->html (order-item name item)))
+                          jqi)
+               (push (jqi->plist jqi) jqies)
+               (incf *mk-order-ttp* price))
+
+             ;; Change: Total-price
+             (push (jqi->plist
+                    (make-jqi :target ".order .total-price"
+                              :methods (list
+                                        (make-jqi-m
+                                         :action "text"
+                                         :content (format nil "¥~,2f" *mk-order-ttp*)))))
+                   jqies)
+             (<-json (list :|jQies| jqies)))
+            (t
+             ;; Error
+             "")))))
 
 
+
+
+(defstruct jqi-m
+  (action "")
+  (content 'null))
+(defun jqi-m->plist (m)
+  (list :|action| (jqi-m-action m)
+        :|content| (jqi-m-content m)))
+(defstruct jqi
+  (target "")
+  (methods nil))
+(defun jqi->plist (jqi)
+  (list :|target| (jqi-target jqi)
+        :|methods| (mapcar #'jqi-m->plist (jqi-methods jqi))))
+
+(defun add-jqi-m (m jqi)
+  (push m (jqi-methods jqi)))
+
+;; (defclass order ()
+;;   (items)
+;;   (total-price))
 #+END_SRC
 ** -----
 ** Test
@@ -308,6 +346,19 @@
            error (lambda (jqXHR textStatus errorThrown)
                    ,err)))))
 
+(defun jq-ins ()
+  `(let ((|jQies| (@ data "jQies")))
+     (chain
+      |jQies|
+      (for-each (lambda (item)
+                  (let ((target (@ item "target"))
+                        (methods (@ item "methods")))
+                    (chain
+                     methods
+                     (for-each (lambda (item)
+                                 (let ((action (@ item "action"))
+                                       (content (@ item "content")))
+                                   ((getprop ($ target) action) content)))))))))))
 #+END_SRC
 *** COMMENT Resource
 #+BEGIN_SRC lisp :tangle yes
@@ -403,6 +454,7 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun index-js ()
   (ps*
+   `(defun jq-ins (data) ,(jq-ins))
    (goods-js)
    (order-js)
    (inventory-js)))
@@ -471,15 +523,12 @@
   `(defun add-goods (obj)
      ,(jq-ajax
        "/goods/add"
-       :data '(create 
-               :goods-name (chain 
-                            ($ obj) (parent) (children ".name")
-                            (text)))
-       :suc '(progn
-              (let ((target (@ data "target"))
-                    (action (@ data "action"))
-                    (content (@ data "content")))
-                ((getprop ($ target) action) content))))))
+       :data
+       '(create 
+         :goods-name (chain 
+                      ($ obj) (parent) (children ".name")
+                      (text)))
+       :suc '(jq-ins data))))
 #+END_SRC
 **** COMMENT test/json
 #+BEGIN_SRC lisp :tangle yes
