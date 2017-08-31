@@ -210,64 +210,45 @@
     #'(lambda (params)
         (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
                (i (gethash name *mk-goods*))
-               (jqies ()))
+               (ins ()))
           (cond
             (i
              ;; Add|Replace: goods 
              (let ((price (third (aref *mk-inventory* i)))
                    (item (gethash name *mk-order*))
                    (action "")
-                   (jqi (make-jqi :target ".order .list")))
-                
+                   (g-ins (list :tag ".order .list" :mes ()))) 
                (cond
+                 ;; Replace
                  (item
                   (incf (second item))
                   (incf (third item) price)
-                  (setf (jqi-target jqi) (format nil ".order .list #~A" (first item))
+                  (setf (getf g-ins :tag) (format nil ".order .list #~A" (first item))
                         action "replaceWith"))
                  (t
+                  ;; Add
                   (setf item (list (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*))
                                    1
                                    price)
                         (gethash name *mk-order*) item
                         action "prepend")))
-               (add-jqi-m (make-jqi-m :action action
-                                      :content (->html (order-item name item)))
-                          jqi)
-               (push (jqi->plist jqi) jqies)
+               (push (list :act action
+                           :con (->html (order-item name item)))
+                     (getf g-ins :mes))
+               (push g-ins ins)
                (incf *mk-order-ttp* price))
 
              ;; Change: Total-price
-             (push (jqi->plist
-                    (make-jqi :target ".order .total-price"
-                              :methods (list
-                                        (make-jqi-m
-                                         :action "text"
-                                         :content (format nil "¥~,2f" *mk-order-ttp*)))))
-                   jqies)
-             (<-json (list :|jQies| jqies)))
+             (push (list :tag ".order .total-price"
+                         :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
+                   ins)
+             
+             ;; <-JSON
+             (<-json (list :ins ins)))
             (t
              ;; Error
              "")))))
 
-
-
-
-(defstruct jqi-m
-  (action "")
-  (content 'null))
-(defun jqi-m->plist (m)
-  (list :|action| (jqi-m-action m)
-        :|content| (jqi-m-content m)))
-(defstruct jqi
-  (target "")
-  (methods nil))
-(defun jqi->plist (jqi)
-  (list :|target| (jqi-target jqi)
-        :|methods| (mapcar #'jqi-m->plist (jqi-methods jqi))))
-
-(defun add-jqi-m (m jqi)
-  (push m (jqi-methods jqi)))
 
 ;; (defclass order ()
 ;;   (items)
@@ -346,18 +327,19 @@
            error (lambda (jqXHR textStatus errorThrown)
                    ,err)))))
 
+
 (defun jq-ins ()
-  `(let ((|jQies| (@ data "jQies")))
+  `(let ((ins (@ data "INS")))
      (chain
-      |jQies|
+      ins
       (for-each (lambda (item)
-                  (let ((target (@ item "target"))
-                        (methods (@ item "methods")))
+                  (let ((target (@ item "TAG"))
+                        (methods (@ item "MES")))
                     (chain
                      methods
                      (for-each (lambda (item)
-                                 (let ((action (@ item "action"))
-                                       (content (@ item "content")))
+                                 (let ((action (@ item "ACT"))
+                                       (content (@ item "CON")))
                                    ((getprop ($ target) action) content)))))))))))
 #+END_SRC
 *** COMMENT Resource
@@ -455,9 +437,14 @@
 (defun index-js ()
   (ps*
    `(defun jq-ins (data) ,(jq-ins))
+   `(defun jq-ajax (url data)
+      ,(jq-ajax 'url
+                :data 'data
+                :suc '(jq-ins data)))
    (goods-js)
    (order-js)
    (inventory-js)))
+
 #+END_SRC
 ** -----
 ** Goods
@@ -520,15 +507,12 @@
 *** Js
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-js ()
-  `(defun add-goods (obj)
-     ,(jq-ajax
-       "/goods/add"
-       :data
-       '(create 
-         :goods-name (chain 
-                      ($ obj) (parent) (children ".name")
-                      (text)))
-       :suc '(jq-ins data))))
+  '(defun add-goods (obj)
+    (jq-ajax "/goods/add"
+     (create 
+      :goods-name (chain 
+                   ($ obj) (parent) (children ".name")
+                   (text))))))
 #+END_SRC
 **** COMMENT test/json
 #+BEGIN_SRC lisp :tangle yes
