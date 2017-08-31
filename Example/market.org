@@ -90,9 +90,9 @@
 
 #+END_SRC
 * Arc
-** Layout
+** COMMENT Layout (Outdated)
 - 1 Page = 3 column
-  - Goods = 45%
+  - Goods = 35%
     - Maket-Logo|Title (Fixed)
     - Lists (Scroll)
       - Li = 2 column
@@ -103,7 +103,7 @@
             - Goods-price (R)
           - Goods-Recommend
           - Goods-status : [Add-to-Oreder | Sold-out(?:Img)]
-  - Order = 10%
+  - Order = 30%
     - Title : "YOUR OREDER"
     - Lists (Scroll)
       - Li = L&R (Hover->Action:"Remove")
@@ -112,7 +112,7 @@
     - Footer = L&R
       - "Total"
       - Order-price-total
-  - Inventory = 45%
+  - Inventory = 35%
     - Titele : "INVENTORY"
     - Lists (Scroll)
       - Li = Table(4r:(3c 1c 1c 1c))
@@ -123,18 +123,23 @@
         - -goods-recommend
         - -goods-img : [Link]
         - Action : "Remove"
-
    
-** Rel
-- Goods.-name <- Inventory.-goods-name
-- Goods.-recommend <- Inventory.-goods-recommend
-- Goods.-status <- Inventory.-goods-status
-- Goods.-img <- Inventory.-goods-img
-- Goods.-status ->
-  - Order.-goods-quantity
-  - Order.-goods-total
-  - Order.-price-total
-- - Goods.-status <-> Inventory.-total-quantity
+** Status & Rel
+- Rel
+  - Goods.-status -click:addGoods()->
+    - Oreder Item
+      - Order.-quantity
+      - Order.-n-price
+    - Order.-total-price
+    - Inventory.-quantity
+    - Inventory.-status
+  - Inventory Table -Edit()->
+    - -img-link -> Goods.-img
+    - -recommend -> Goods.-recommend
+    - -status -> Goods.-status
+    - -name -> Goods.-name
+- Status
+  - Goods.status : [Add-to-Oreder | Sold-out(?:Img)] = F|T
 
 * DB
 #+BEGIN_SRC lisp :tangle yes
@@ -159,11 +164,7 @@
            (rcd (concat "推荐-" i))
            (il (concat "http://img-" i ".jpg")))
        (vector-push-extend
-        `(,name
-          100
-          1.99
-          ,rcd
-          ,il)
+        `(,name 20 1.99 ,rcd ,il)
         ,*mk-inventory*)
        (setf (gethash name *mk-goods*) i)))
 
@@ -201,23 +202,37 @@
              (declare (ignore params))
              (index ())))
 #+END_SRC
-** /goods
+** /order
 *** Add
 #+BEGIN_SRC lisp :tangle yes
-;; POST /goods/add
+;; POST /order/add
 (route->
-    :POST "/goods/add" 
+    :POST "/order/add" 
     #'(lambda (params)
         (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
                (i (gethash name *mk-goods*))
                (ins ()))
           (cond
             (i
-             ;; Add|Replace: goods 
-             (let ((price (third (aref *mk-inventory* i)))
+             (let ((num (second (aref *mk-inventory* i)))
+                   (price (third (aref *mk-inventory* i)))
                    (item (gethash name *mk-order*))
                    (action "")
-                   (g-ins (list :tag ".order .list" :mes ()))) 
+                   (g-ins (list :tag ".order .list" :mes ())))
+               (and (if (> num 0) t (progn "??? UI Error!" nil))
+                    ;; quantity - 1
+                    (progn (setf (second (aref *mk-inventory* i)) (decf num))
+                           (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 2) ") .quantity")
+                                       :mes `((:act "text" :con ,(concat num "个"))))
+                                 ins))
+                    ;; Goods.-status = sold out
+                    (if (= num 0)
+                        (push (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
+                                    :mes `((:act "text" :con "卖完")
+                                           (:act "addClass" :con "disabled")))
+                              ins)
+                        t))
+               ;; Order Add|Replace
                (cond
                  ;; Replace
                  (item
@@ -254,6 +269,48 @@
 ;;   (items)
 ;;   (total-price))
 #+END_SRC
+
+*** Del
+#+BEGIN_SRC lisp :tangle yes
+;; POST /order/del
+(route->
+    :POST "/order/del" 
+    #'(lambda (params)
+        (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
+               (i (gethash name *mk-goods*))
+               (ins ()))
+          (if i
+              (let ((num (second (aref *mk-inventory* i)))
+                    (item (gethash name *mk-order*)))
+                (and item
+                     (if (= num 0)
+                         (push (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
+                                     :mes `((:act "text" :con "订购")
+                                            (:act "removeClass" :con "disabled")))
+                               ins)
+                         t)
+                     (setf (second (aref *mk-inventory* i)) (incf num (second item)))
+                     (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 2) ") .quantity")
+                                 :mes `((:act "text" :con ,(concat num "个"))))
+                           ins)
+                     ;; Change: Total-price
+                     (decf *mk-order-ttp* (third item))
+                     (push (list :tag ".order .total-price"
+                                 :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
+                           ins)
+                     ;; Remove Item
+                     (remhash name *mk-order*)
+                     (push (list :tag (concat ".order #" (first item))
+                                 :mes `((:act "remove" :con :null)))
+                           ins)
+                     ;; <-JSON
+                     (<-json (list :ins ins))))
+              ;; Error
+              "ERROR!"))))
+
+#+END_SRC
+
+
 ** -----
 ** Test
 *** COMMENT /test/json
@@ -410,6 +467,8 @@
                        :font-size "14px"
                        :padding "1px 2px 1px 5px"))
      
+     ("ul" (:list-style "none"))
+     
      ;; Float
      (".left" (:float "left"))
      (".right" (:float "right"))
@@ -422,8 +481,9 @@
                        :float "left")))
      ;; (".w-1" (:width "calc(1*100%/12)" :float "left")) ...
      
-     ;; ul
-     ("ul" (:list-style "none"))
+     ;; Disabled
+     (".disabled" (:pointer-events "none"))
+
      
      ;; Market
      (".market" (:background "white" :border "2px solid black"
@@ -467,9 +527,9 @@
                                      ,(format nil "¥~A" price))
                                (p (:class "recommend")
                                   ,(format nil "~A" rcd))
-                               (span (:class "status"
-                                             :onclick "addGoods(this)")
-                                     "订购"))))))))
+                               (span (:class ,(concat "status" (if (<= num 0) " disabled" ""))
+                                             :onclick "addOrderItem(this)")
+                                     ,(if (<= num 0) "卖完" "订购")))))))))
 
 #+END_SRC
 
@@ -507,8 +567,8 @@
 *** Js
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-js ()
-  '(defun add-goods (obj)
-    (jq-ajax "/goods/add"
+  '(defun add-order-item (obj)
+    (jq-ajax "/order/add"
      (create 
       :goods-name (chain 
                    ($ obj) (parent) (children ".name")
@@ -574,7 +634,7 @@
                       ,(format nil "~A个" num))
                 (span (:class "name")
                       ,(format nil "~A" name))
-                (span (:class "remove") "x"))
+                (span (:class "remove" :onclick "delOrderItem(this)") "x"))
            (span (:class "n-price w-4")
                  ,(format nil "¥~,2f" price)))))
 
@@ -619,7 +679,9 @@
                :text-align "center"
                :margin-bottom "20px"))
     (".header" (:border-bottom "1px solid"
-                :height "20px"))
+                :height "20px")
+     (".name" (:text-align "center")))
+    (".n-price" (:text-align "right"))
     (".list" ()
      ("li" (:clear "both"
                    :height "50px"
@@ -628,8 +690,7 @@
                    :display "flex"
                    :align-items "center")
       (".quantity" (:margin-right "10px"))
-      (".remove" (:display "none"))
-      (".n-price" (:text-align "right")))
+      (".remove" (:display "none" :cursor "pointer")))
      ("li:hover" ()
       (".remove" (:display "inline-block" :color "red"))))
     (".footer" (:clear "both"
@@ -638,7 +699,13 @@
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
-(defun order-js ())
+(defun order-js ()
+  '(defun del-order-item (obj)
+    (jq-ajax "/order/del"
+     (create 
+      :goods-name (chain 
+                   ($ obj) (parent) (children ".name")
+                   (text))))))
 
 #+END_SRC
 ** Inventory
