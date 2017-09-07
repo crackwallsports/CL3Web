@@ -32,7 +32,8 @@
 #+BEGIN_SRC lisp :tangle yes
 (in-package :cl-user)
 (defpackage market
-  (:use :cl :ningle :xt3.web.base)
+  (:use :cl :ningle :xt3.web.base
+        :parse-number)
   (:nicknames :mk)
   (:import-from :lack.builder
                 :builder)
@@ -194,6 +195,17 @@
 
 
 #+END_SRC
+*** Sold Out
+#+BEGIN_SRC lisp :tangle yes
+(defun sold-out (i &key reverse)
+  (if reverse
+      (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
+            :mes `((:act "text" :con "订购")
+                   (:act "removeClass" :con "disabled")))
+      (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
+            :mes `((:act "text" :con "卖完")
+                   (:act "addClass" :con "disabled")))))
+#+END_SRC
 ** /
 #+BEGIN_SRC lisp :tangle yes
 ;; GET /
@@ -227,10 +239,7 @@
                                  ins))
                     ;; Goods.-status = sold out
                     (if (= num 0)
-                        (push (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
-                                    :mes `((:act "text" :con "卖完")
-                                           (:act "addClass" :con "disabled")))
-                              ins)
+                        (push (sold-out i) ins)
                         t))
                ;; Order Add|Replace
                (cond
@@ -268,6 +277,7 @@
 ;; (defclass order ()
 ;;   (items)
 ;;   (total-price))
+
 #+END_SRC
 
 *** Del
@@ -327,6 +337,10 @@
                    (setf table (aref *mk-inventory* i))
                    (case (position id '("name" "quantity" "price" "recommend" "img-link") :test #'equal)
                      (0 (setf ins (nconc (change-name val table i) ins)))
+                     (1 (setf ins (nconc (change-quantity val table i) ins)))
+                     (2 (setf ins (nconc (change-price val table i) ins)))
+                     (3 (setf ins (nconc (change-recommend val table i) ins)))
+                     (4 (setf ins (nconc (change-img-link val table i) ins)))
                      (t nil))
                    ;; <-JSON
                    ;; (format nil "~A" ins)
@@ -355,6 +369,50 @@
                 :mes `((:act "text" :con ,new-name)))
           ins)
     ins))
+
+
+(defun change-quantity (new-num table i)
+  (let ((ins ())
+        (num (parse-integer (if (equal new-num "")
+                                "0"
+                                new-num)
+                            :junk-allowed t))
+        (old-num (nth 1 table)))
+    (when (>= num 0)
+      (setf (nth 1 table) num)
+      (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #quantity")
+                  :mes `((:act "val" :con ,(concat num "个"))))
+            ins)
+      (if (= 0 old-num)
+          (push (sold-out i :reverse t) ins))
+      (if (= 0 num)
+          (push (sold-out i) ins))
+      ins)))
+
+(defun change-price (new-price table i)
+  (let ((num (parse-real-number (string-trim "¥" (if (equal new-price "")
+                                                     "0.00"
+                                                     new-price)))))
+    (when (>= num 0)
+      (setf (nth 2 table) num)
+      (list (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #price")
+                  :mes `((:act "val" :con ,(concat "¥" num))))
+            (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .price")
+                  :mes `((:act "text" :con ,(concat "¥" num))))))))
+
+(defun change-recommend (new-rcd table i)
+  (setf (nth 3 table) new-rcd)
+  (list (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #recommend")
+              :mes `((:act "val" :con ,new-rcd)))
+        (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .recommend")
+                :mes `((:act "text" :con ,new-rcd)))))
+
+(defun change-img-link (new-link table i)
+  (setf (nth 4 table) new-link)
+  (list (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #img-link")
+              :mes `((:act "val" :con ,new-link)))
+        (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .img")
+              :mes `((:act "attr" :con (:src ,new-link))))))
 
 
 
@@ -523,12 +581,22 @@
      (".right" (:float "right"))
      
      ;; Gird
-     ,@(loop for i from 1 to 12
-          collect
-            `(,(format nil ".w-~a" i)
-               (:width ,(format nil "calc(~a*100%/12)" i)
-                       :float "left")))
+     ;; ,@(loop for i from 1 to 12
+     ;;      collect
+     ;;        `(,(format nil ".w-~a" i)
+     ;;           (:width ,(format nil "calc(~a*100%/12)" i)
+     ;;                   :float "left")))
      ;; (".w-1" (:width "calc(1*100%/12)" :float "left")) ...
+
+     ,@(loop for i from 1 to 12
+        collect
+          `(,(format nil ".w-~a" i)
+             (:width ,(format nil "~D%" (round (* 100 (/ i 12))))
+                     :float "left")))
+     ;; (".w-1" (:WIDTH "8%" :FLOAT "left"))
+     
+     
+     
      
      ;; Disabled
      (".disabled" (:pointer-events "none"))
@@ -678,13 +746,12 @@
 (defun order-item (name item)
   (destructuring-bind (id num price) item
       `(li (:id ,id)
-           (div (:class "info w-8")
-                (span (:class "quantity")
-                      ,(format nil "~A个" num))
-                (span (:class "name")
-                      ,(format nil "~A" name))
-                (span (:class "remove" :onclick "delOrderItem(this)") "x"))
-           (span (:class "n-price w-4")
+           (span (:class "quantity w-3")
+                 ,(format nil "~A个" num))
+           (span (:class "name w-5")
+                 ,(format nil "~A" name))
+           (span (:class "remove w-1" :onclick "delOrderItem(this)") "x")
+           (span (:class "n-price")
                  ,(format nil "¥~,2f" price)))))
 
 (defun order-htm ()
@@ -738,8 +805,11 @@
                    :position "relative"
                    :display "flex"
                    :align-items "center")
+      (".name" (:text-align "center"))
       (".quantity" (:margin-right "10px"))
-      (".remove" (:display "none" :cursor "pointer")))
+      (".remove" (:display "none" :cursor "pointer"))
+      (".n-price" (:position "absolute"
+                             :right 0)))
      ("li:hover" ()
       (".remove" (:display "inline-block" :color "red"))))
     (".footer" (:clear "both"
@@ -763,37 +833,40 @@
 (defun inventory-htm ()
   `(div (:class "inventory left")
         (h1 (:class "title") "库存")
+        (div (:class "toolbar")
+             (span (:class "add") "添加"))
         (ul (:class "list" :onclick "editing(event)" :onkeyup "edited(event)")
             ;; Items
             ,@(map 'list
                    (lambda (item)
                      (destructuring-bind (name num price rcd il) item
                        `(li (:class "table")
+                            (input (:class "name row w-6" :id "name"
+                                           :type "text" :placeholder "???" :value ,name
+                                           :onblur "editCancel()"))
                             (div (:class "row")
-                                 (input (:class "name col w-6" :id "name"
-                                                :type "text" :placeholder "???" :value ,name
-                                                :onblur "editCancel()"))
-                                 (input (:class "quantity col w-2" :id "quantity"
+                                 (input (:class "quantity col w-4" :id "quantity"
                                                 :type "text" :placeholder "???" :value ,(format nil "~A个" num)
                                                 :onblur "editCancel()"))
-                                 (input (:class "price col w-2" :id "price"
+                                 (input (:class "price col w-4" :id "price"
                                                 :type "text" :placeholder "???" :value ,(format nil "¥~A" price)
                                                 :onblur "editCancel()"))
-                                 (span (:class "col w-2")
+                                 (span (:class "col w-4")
                                        (select (:class "status"
                                                        :id "status" :name "status")
                                          (option (:value "fresh") "有存货")
                                          (option (:value "out") "卖完"))))
                             (textarea (:class "recommend row" :id "recommend"
-                                              ;; :rows "10" :cols "50"
-                                              :value ,rcd
-                                              :onblur "editCancel()"))
+                                              :placeholder "???"
+                                              :onblur "editCancel()")
+                                      ,rcd)
                             (input (:class "img-link row" :id "img-link"
                                            :type "text" :placeholder "???" :value ,il
                                            :onblur "editCancel()"))
                             (div (:class "remove row")
                                  (span () "移除")))))
                    ,*mk-inventory*))))
+
 #+END_SRC
 
 *** Css
@@ -807,6 +880,10 @@
     (".title" (:font-size "20px"
                :text-align "center"
                :margin-bottom "20px"))
+    (".toolbar" (:border-top "1px solid"
+                 :text-align "right")
+     (".add:hover" (:text-decoration "underline"
+                                     :cursor "pointer")))
     (".list" ()
      ("input.editing" (:background "#efcb3a"))
      (".editing" (:display "auto"))
@@ -815,11 +892,19 @@
       (".row" (:border-bottom "1px solid"
                               :display "block"
                               :height "20px"
-                              :width "100%")
-              (".col" (:border-right "1px solid")))
+                              :width "100%"
+                              :clear "both")
+              (".col" (:border-left "1px solid"
+                                    :height "100%")))
+      ("#quantity" (:border-left "none" :text-align "right"))
+      ("#price" (:text-align "right"))
+      ("#status" (:border "none"
+                          :width "100%" :height "100%"
+                          :background "none"
+                          :font-size "1em"))
       (".recommend" (:height "70px" :padding "2px" :border "none" :border-bottom "1px solid"))
       ;; (".img-link" ())
-      (".remove" (:text-align "center"
+      (".remove" (:text-align "center" :border "none"
                               :cursor "pointer"))
       (".remove:hover" (:text-decoration "underline"))))))
 
@@ -831,14 +916,7 @@
    '(var cur-edit (create
                    obj nil
                    val ""))
-
-   ;; `(defun editing (obj)
-   ;;    ;; (chain console (log obj))
-   ;;    (unless (chain ($ obj) (has-class "editing"))
-   ;;      ;; (edit-cancel)
-   ;;      (setf (@ cur-edit obj) obj
-   ;;            (@ cur-edit val) (chain ($ obj) (val)))
-   ;;      (chain ($ obj) (toggle-class "editing"))))
+   
    `(defun editing (e)
       ;; (chain console (log obj))
       (var obj (@ e target))
@@ -861,7 +939,9 @@
          ;; (chain console (log "Enter"))
          ,(jq-ajax "/inventory/edited"
                    :data '(create
-                           :index (chain ($ ".table") (index (chain ($ obj) (parent) (parent))))
+                           :index (chain ($ ".table")
+                                   (index (chain ($ obj)
+                                                 (parents ".table"))))
                            :id (chain ($ obj) (attr "id"))
                            :new-val (chain ($ obj) (val)))
                    :suc '(progn
