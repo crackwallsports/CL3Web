@@ -145,12 +145,9 @@
 * DB
 #+BEGIN_SRC lisp :tangle yes
 ;;; Market
-;; Inventory-array = name quantity price recommend img-link
-;; Goods-hs = name index-in-inventory
+;; Inventory-array = name quantity price recommend img-link status
 ;; Order-ht = name : (id quantity price*num) 
 
-;; goods
-(defparameter *mk-goods* (make-hash-table :test 'equal))
 ;; order
 (defparameter *mk-order* (make-hash-table :test 'equal))
 (defparameter *mk-order-ttp* 0)         ; total-price
@@ -163,11 +160,11 @@
 (loop for i from 0 to 10 do
      (let ((name (concat "商品-" i))
            (rcd (concat "推荐-" i))
-           (il (concat "http://img-" i ".jpg")))
+           (il  (concat "/images/img" i ".jpg"))
+           (status "fresh"))
        (vector-push-extend
-        `(,name 20 1.99 ,rcd ,il)
-        ,*mk-inventory*)
-       (setf (gethash name *mk-goods*) i)))
+        `(,name 20 1.99 ,rcd ,il ,status)
+        ,*mk-inventory*)))
 
 
 #+END_SRC
@@ -222,61 +219,60 @@
     :POST "/order/add" 
     #'(lambda (params)
         (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
-               (i (gethash name *mk-goods*))
+               (i (position name *mk-inventory* :key #'first :test #'equal))
+               (item (gethash name *mk-order*))
+               num
+               price
                (ins ()))
-          (cond
-            (i
-             (let ((num (second (aref *mk-inventory* i)))
-                   (price (third (aref *mk-inventory* i)))
-                   (item (gethash name *mk-order*))
-                   (action "")
-                   (g-ins (list :tag ".order .list" :mes ())))
-               (and (if (> num 0) t (progn "??? UI Error!" nil))
-                    ;; quantity - 1
-                    (progn (setf (second (aref *mk-inventory* i)) (decf num))
-                           (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") .quantity")
-                                       :mes `((:act "val" :con ,(concat num "个"))))
-                                 ins))
-                    ;; Goods.-status = sold out
-                    (if (= num 0)
-                        (push (sold-out i) ins)
-                        t))
-               ;; Order Add|Replace
-               (cond
-                 ;; Replace
-                 (item
-                  (incf (second item))
-                  (incf (third item) price)
-                  (setf (getf g-ins :tag) (format nil ".order .list #~A" (first item))
-                        action "replaceWith"))
-                 (t
-                  ;; Add
-                  (setf item (list (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*))
-                                   1
-                                   price)
-                        (gethash name *mk-order*) item
-                        action "prepend")))
-               (push (list :act action
-                           :con (->html (order-item name item)))
-                     (getf g-ins :mes))
-               (push g-ins ins)
-               (incf *mk-order-ttp* price))
-
-             ;; Change: Total-price
-             (push (list :tag ".order .total-price"
-                         :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
-                   ins)
+          (or (and i
+                   (setf num (second (aref *mk-inventory* i)))
+                   (setf price (third (aref *mk-inventory* i)))
+                   ;; Sub Inventory.quantity
+                   (and (> num 0)
+                        ;; change-quantity
+                        (setf (second (aref *mk-inventory* i)) (decf num))
+                        (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") .quantity")
+                                    :mes `((:act "val" :con ,(concat num "个"))))
+                              ins))
+                   ;; Goods.status = sold out
+                   (if (= num 0)
+                       (progn
+                         ;; change-status
+                         (setf (sixth (aref *mk-inventory* i)) "out")
+                         (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #status")
+                                     :mes `((:act "val" :con "out")))
+                               ins)
+                         (push (sold-out i) ins))
+                       t)
+                   ;; Order 
+                   (if item
+                       ;; Replace
+                       (progn
+                         (incf (second item))
+                         (incf (third item) price)
+                         (push (list :tag (concat ".order .list #" (first item))
+                                     :mes `((:act "replaceWith" :con ,(->html (order-item name item)))))
+                               ins))
+                       ;; Order Add
+                       (progn
+                         (setf item (list (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*))
+                                          1
+                                          price)
+                               (gethash name *mk-order*) item)
+                         (push (list :tag (concat ".order .list")
+                                     :mes `((:act "prepend" :con ,(->html (order-item name item)))))
+                               ins)))
+                   ;; Change: Total-price
+                   (incf *mk-order-ttp* price)
+                   (push (list :tag ".order .total-price"
+                               :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
+                         ins)
              
-             ;; <-JSON
-             (<-json (list :ins ins)))
-            (t
-             ;; Error
-             "")))))
+                   ;; <-JSON
+                   (<-json (list :ins ins)))
+              ;; Error
+              "ERROR!"))))
 
-
-;; (defclass order ()
-;;   (items)
-;;   (total-price))
 
 #+END_SRC
 
@@ -287,22 +283,28 @@
     :POST "/order/del" 
     #'(lambda (params)
         (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
-               (i (gethash name *mk-goods*))
-               (num (second (aref *mk-inventory* i)))
                (item (gethash name *mk-order*))
+               (i (position name *mk-inventory* :key #'first :test #'equal))
+               num
                (ins ()))
-          (or (and i
-                   item
-                   (if (= num 0)
-                       (push (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .status")
-                                   :mes `((:act "text" :con "订购")
-                                          (:act "removeClass" :con "disabled")))
-                             ins)
+          (or (and item
+                   (if i
+                       (and (setf num (second (aref *mk-inventory* i)))
+                            (if (= num 0)
+                                (progn
+                                  ;; change-status
+                                  (setf (sixth (aref *mk-inventory* i)) "fresh")
+                                  (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #status")
+                                              :mes `((:act "val" :con "fresh")))
+                                        ins)
+                                  (push (sold-out i :reverse t) ins))
+                                t)
+                            ;; change-quantity
+                            (setf (second (aref *mk-inventory* i)) (incf num (second item)))
+                            (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") .quantity")
+                                        :mes `((:act "val" :con ,(concat num "个"))))
+                                  ins))
                        t)
-                   (setf (second (aref *mk-inventory* i)) (incf num (second item)))
-                   (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") .quantity")
-                               :mes `((:act "val" :con ,(concat num "个"))))
-                         ins)
                    ;; Change: Total-price
                    (decf *mk-order-ttp* (third item))
                    (push (list :tag ".order .total-price"
@@ -329,9 +331,7 @@
         (let* ((i (parse-integer (cdr (assoc "index" params :test #'string=))))
                (id (cdr (assoc "id" params :test #'string=)))
                (val (cdr (assoc "new-val" params :test #'string=)))
-               table ;; (name quantity price recommend img-link)
-               ;; con
-               ;; (item (gethash name *mk-order*))
+               table;; (name quantity price recommend img-link status)
                (ins ()))
           (or (and (and i (>= i 0))
                    (setf table (aref *mk-inventory* i))
@@ -363,8 +363,6 @@
     (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #name")
                 :mes `((:act "val" :con ,new-name)))
           ins)
-    (setf (gethash new-name *mk-goods*) i)
-    (remhash name *mk-goods*)
     (push (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ") .name")
                 :mes `((:act "text" :con ,new-name)))
           ins)
@@ -383,10 +381,16 @@
       (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #quantity")
                   :mes `((:act "val" :con ,(concat num "个"))))
             ins)
-      (if (= 0 old-num)
-          (push (sold-out i :reverse t) ins))
-      (if (= 0 num)
-          (push (sold-out i) ins))
+      ;; (when (= 0 old-num)
+      ;;   (setf (sixth (aref *mk-inventory* i)) "fresh")
+      ;;   (push (sold-out i :reverse t) ins))
+      (when (= 0 num)
+        ;; change-status
+        (setf (sixth (aref *mk-inventory* i)) "out")
+        (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #status")
+                  :mes `((:act "val" :con "out")))
+              ins)
+        (push (sold-out i) ins))
       ins)))
 
 (defun change-price (new-price table i)
@@ -416,6 +420,77 @@
 
 
 
+#+END_SRC
+
+*** Status
+#+BEGIN_SRC lisp :tangle yes
+;; POST /inventory/status
+(route->
+    :POST "/inventory/status" 
+    #'(lambda (params)
+        (let* ((i (parse-integer (cdr (assoc "index" params :test #'string=))))
+               (val (cdr (assoc "val" params :test #'string=)))
+               (ins ()))
+          (or (and (and i (>= i 0))
+                   (setf (sixth (aref *mk-inventory* i)) val)
+                   (push (change-status val (second (aref *mk-inventory* i)) i) ins)
+                   ;; <-JSON
+                   (<-json (list :ins ins)))
+              ;; Error
+              "ERROR!"))))
+
+
+(defun change-status (status num i)
+  (cond ((string= status "out") (sold-out i))
+        ((and (string= status "fresh") (> num 0))
+         (sold-out i :reverse t))
+        (t (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") #status")
+                 :mes `((:act "val" :con "out"))))))
+#+END_SRC
+
+*** Add
+#+BEGIN_SRC lisp :tangle yes
+;; POST /inventory/add
+(route->
+    :POST "/inventory/add" 
+    #'(lambda (params)
+        (let ((item (list (concat "商品-" (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*)))
+                          0 0.00 "推荐" "#" "out")))
+          (vector-push-extend item *mk-inventory*)
+          (<-json (list :ins (list (list :tag (concat ".inventory .list")
+                                         :mes `((:act "append" :con ,(->html (inventory-item item)))))
+                                   (list :tag (concat ".goods .list")
+                                         :mes `((:act "append" :con ,(->html (goods-item item)))))))))))
+#+END_SRC
+
+*** Del
+#+BEGIN_SRC lisp :tangle yes
+;; POST /inventory/del
+(route->
+    :POST "/inventory/del" 
+    #'(lambda (params)
+        (let* ((i (parse-integer (cdr (assoc "index" params :test #'string=))))
+               (val (cdr (assoc "val" params :test #'string=)))
+               table ;; (name quantity price recommend img-link)
+               (ins ()))
+          (or (and (and i (>= i 0))
+                   (setf *mk-inventory* (del-array-by-index *mk-inventory* i))
+                   (push (change-status val (second table) i) ins)
+                   ;; <-JSON
+                   (<-json (list :ins (list (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ")")
+                                                  :mes `((:act "remove" :con :null)))
+                                            (list :tag (concat ".goods .list li:nth-child(" (+ i 1) ")")
+                                                  :mes `((:act "remove" :con :null)))))))
+              ;; Error
+              "ERROR!"))))
+
+(defun del-array-by-index (array i)
+  (let* ((na (remove (aref array i) array))
+         (d (array-dimensions na)))
+    (make-array d
+                :displaced-to na
+                :fill-pointer t
+                :adjustable t)))
 #+END_SRC
 
 
@@ -632,21 +707,24 @@
         (h1 (:class "title") "市场")
         (ul (:class "list")
             ;; Items
-            ,@(loop for i from 0 below (length *mk-inventory*)
-                 collect
-                   (destructuring-bind (name num price rcd il) (aref *mk-inventory* i)
-                     `(li ()
-                          (img (:class "img w-4" :src "#" :alt "Goods"))
-                          (div (:class "content w-8")
-                               (span (:class "name left")
-                                     ,(format nil "~A" name))
-                               (span (:class "price right")
-                                     ,(format nil "¥~A" price))
-                               (p (:class "recommend")
-                                  ,(format nil "~A" rcd))
-                               (span (:class ,(concat "status" (if (<= num 0) " disabled" ""))
-                                             :onclick "addOrderItem(this)")
-                                     ,(if (<= num 0) "卖完" "订购")))))))))
+            ,@(map 'list
+                   #'goods-item
+                   ,*mk-inventory*))))
+
+(defun goods-item (item)
+  (destructuring-bind (name num price rcd il stat) item
+    `(li ()
+         (img (:class "img w-4" :src ,il :alt "Goods"))
+         (div (:class "content w-8")
+              (span (:class "name left")
+                    ,(format nil "~A" name))
+              (span (:class "price right")
+                    ,(format nil "¥~A" price))
+              (p (:class "recommend")
+                 ,(format nil "~A" rcd))
+              (span (:class ,(concat "status" (if (equal stat "out") " disabled" ""))
+                            :onclick "addOrderItem(this)")
+                    ,(if (equal stat "out") "卖完" "订购"))))))
 
 #+END_SRC
 
@@ -743,17 +821,6 @@
 ** Order
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
-(defun order-item (name item)
-  (destructuring-bind (id num price) item
-      `(li (:id ,id)
-           (span (:class "quantity w-3")
-                 ,(format nil "~A个" num))
-           (span (:class "name w-5")
-                 ,(format nil "~A" name))
-           (span (:class "remove w-1" :onclick "delOrderItem(this)") "x")
-           (span (:class "n-price")
-                 ,(format nil "¥~,2f" price)))))
-
 (defun order-htm ()
   (let ((ttp 0.00))
     `(div (:class "order left")
@@ -769,18 +836,23 @@
                              (push (order-item k v) order)
                              (incf ttp (third v)))
                            ,*mk-order*)
+                  (setf *mk-order-ttp* ttp)
                   order))
           (div (:class "footer")
                "总价"
                (span (:class "total-price right")
                      ,(format nil "¥~,2f" ttp))))))
 
-;; (let ((order))
-;;   (maphash (lambda (k v)
-;;              (push (format nil "~A ~f" k v)
-;;                    order))
-;;            *mk-order*)
-;;   order)
+(defun order-item (name item)
+  (destructuring-bind (id num price) item
+      `(li (:id ,id)
+           (span (:class "quantity w-3")
+                 ,(format nil "~A个" num))
+           (span (:class "name w-5")
+                 ,(format nil "~A" name))
+           (span (:class "remove w-1" :onclick "delOrderItem(this)") "x")
+           (span (:class "n-price")
+                 ,(format nil "¥~,2f" price)))))
 
 #+END_SRC
 *** Css
@@ -834,38 +906,43 @@
   `(div (:class "inventory left")
         (h1 (:class "title") "库存")
         (div (:class "toolbar")
-             (span (:class "add") "添加"))
+             (span (:class "add" :onclick "addInventory()") "添加"))
         (ul (:class "list" :onclick "editing(event)" :onkeyup "edited(event)")
             ;; Items
             ,@(map 'list
-                   (lambda (item)
-                     (destructuring-bind (name num price rcd il) item
-                       `(li (:class "table")
-                            (input (:class "name row w-6" :id "name"
-                                           :type "text" :placeholder "???" :value ,name
-                                           :onblur "editCancel()"))
-                            (div (:class "row")
-                                 (input (:class "quantity col w-4" :id "quantity"
-                                                :type "text" :placeholder "???" :value ,(format nil "~A个" num)
-                                                :onblur "editCancel()"))
-                                 (input (:class "price col w-4" :id "price"
-                                                :type "text" :placeholder "???" :value ,(format nil "¥~A" price)
-                                                :onblur "editCancel()"))
-                                 (span (:class "col w-4")
-                                       (select (:class "status"
-                                                       :id "status" :name "status")
-                                         (option (:value "fresh") "有存货")
-                                         (option (:value "out") "卖完"))))
-                            (textarea (:class "recommend row" :id "recommend"
-                                              :placeholder "???"
-                                              :onblur "editCancel()")
-                                      ,rcd)
-                            (input (:class "img-link row" :id "img-link"
-                                           :type "text" :placeholder "???" :value ,il
-                                           :onblur "editCancel()"))
-                            (div (:class "remove row")
-                                 (span () "移除")))))
+                   #'inventory-item 
                    ,*mk-inventory*))))
+
+(defun inventory-item (item)
+  (destructuring-bind (name num price rcd il stat) item
+    `(li (:class "table")
+         (input (:class "name row w-6" :id "name"
+                        :type "text" :placeholder "???" :value ,name
+                        :onblur "editCancel()"))
+         (div (:class "row")
+              (input (:class "quantity col w-4" :id "quantity"
+                             :type "text" :placeholder "???" :value ,(format nil "~A个" num)
+                             :onblur "editCancel()"))
+              (input (:class "price col w-4" :id "price"
+                             :type "text" :placeholder "???" :value ,(format nil "¥~A" price)
+                             :onblur "editCancel()"))
+              (span (:class "col w-4")
+                    (select (:class "status" :id "status" :name "status" :onchange "changeStatus(this)")
+                      ,@(mapcar (lambda (val text)
+                                  `(option ,(append (list :value val)
+                                                    (if (equal stat val)
+                                                        '(:selected "selected")))
+                                           ,text))
+                                '("fresh" "out") '("有存货" "卖完")))))
+         (textarea (:class "recommend row" :id "recommend"
+                           :placeholder "???"
+                           :onblur "editCancel()")
+                   ,rcd)
+         (input (:class "img-link row" :id "img-link"
+                        :type "text" :placeholder "???" :value ,il
+                        :onblur "editCancel()"))
+         (div (:class "remove row")
+              (span (:onclick "remInventory(this)") "移除")))))
 
 #+END_SRC
 
@@ -913,6 +990,16 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun inventory-js ()
   (ps*
+   `(defun add-inventory (obj)
+      (jq-ajax "/inventory/add" nil))
+   
+   `(defun rem-inventory (obj)
+      (jq-ajax "/inventory/del"
+               (create
+                :index (chain ($ ".table")
+                              (index (chain ($ obj)
+                                            (parents ".table")))))))
+   
    '(var cur-edit (create
                    obj nil
                    val ""))
@@ -958,6 +1045,13 @@
        (val (@ cur-edit val))
        (remove-class "editing"))
       (setf (@ cur-edit obj) nil
-            (@ cur-edit val) ""))))
+            (@ cur-edit val) ""))
 
+   `(defun change-status (obj)
+      (jq-ajax "/inventory/status"
+               (create
+                :index (chain ($ ".table")
+                              (index (chain ($ obj)
+                                            (parents ".table"))))
+                :val (chain ($ obj) (val)))))))
 #+END_SRC
