@@ -165,7 +165,77 @@
        (vector-push-extend
         `(,name 20 1.99 ,rcd ,il ,status)
         ,*mk-inventory*)))
+#+END_SRC
 
+** COMMENT Class Test
+#+BEGIN_SRC lisp 
+(defclass order ()
+  ((tag :initform ".order .list"
+        :reader tag)
+   (items :initform (make-hash-table :test 'equal)
+          :initarg :items
+          :accessor items)))
+(defclass order-item ()
+  ((tag :initform ".order .list #"
+        :reader tag)
+   (id :initform (format nil "~D~3,'0D" (get-universal-time) (incf *rdd-count*))
+       :initarg :id
+       :reader oi-id)
+   (quantity :initform 1
+             :initarg :quantity
+             :accessor oi-quantity)
+   (nprice :initform 0.00
+           :initarg :nprice
+           :accessor oi-nprice)))
+
+(defmethod change-status (((table inventory-item)) (stat string))
+  (let ((ins ()))
+    (push (list :tag (tag table)
+                :mes `((:act "val" :con ,stat)))
+          ins)
+    (push (sold-out i) ins)))
+
+(defmethod add-quantity ((table inventory-item) (num integer))
+  (let ((ins ()))
+    (decf (quantity table) num)
+    (push (list :tag (concat ".inventory .list .table:nth-child(" (+ i 1) ") .quantity")
+                :mes `((:act "val" :con ,(concat num "个"))))
+          ins)
+    (when (= (quantity table) 0)
+      (change-status table "out"))))
+
+(defmethod add-item ((order order) (item order-item) (name string))
+  (let ((num (quantity *inventory-table* i))
+        (price (price *inventory* i))
+        (ins ()))
+    (if (> num 0)
+        (push (add-quantity *inventory-table* -1) ins))
+    (setf (gethash name (items order)) item)
+    (push (list :tag (tag order)
+                :mes `((:act "prepend" :con ,(->html (order-item name item)))))
+          ins)
+    ;; Change: Total-price
+    (incf *mk-order-ttp* price)
+    (push (list :tag ".order .total-price"
+                :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
+          ins)))
+(defmethod replace-item ((order order) (item order-item) (name string))
+  (let ((num (quantity *inventory-table* i))
+        (price (price *inventory* i))
+        (ins ()))
+    (if (> num 0)
+        (push (add-quantity *inventory-table* -1) ins))
+    (setf (gethash name (items order)) item)
+    (incf (quantity item))
+    (incf (nprice item) price)
+    (push (list :tag (concat (tag item) (id item))
+                :mes `((:act "replaceWith" :con ,(->html (order-item name item)))))
+          ins)
+    ;; Change: Total-price
+    (incf *mk-order-ttp* price)
+    (push (list :tag ".order .total-price"
+                :mes `((:act "text" :con ,(format nil "¥~,2f" *mk-order-ttp*))))
+          ins)))
 
 #+END_SRC
 
