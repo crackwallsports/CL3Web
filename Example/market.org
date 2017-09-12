@@ -6,15 +6,19 @@
 
 * Load
 #+BEGIN_SRC lisp
-;; Web Framework
-(ql:quickload :ningle)
-(ql:quickload :lack)
-;; JS
-(ql:quickload :parenscript)
-;; JSON
-(ql:quickload :jonathan)
-;; Parse Real Number
-(ql:quickload :parse-number)
+
+(ql:quickload '( ;; Web Framework
+                :ningle :lack :clack
+                ;; Websocket
+                :websocket-driver
+                ;; JS
+                :parenscript
+                ;; JSON
+                :jonathan
+                ;; Parse Real Number
+                :parse-number)
+              :silent t)
+
 ;; Helper
 (load "base")
 
@@ -34,8 +38,11 @@
 #+BEGIN_SRC lisp :tangle yes
 (in-package :cl-user)
 (defpackage market
-  (:use :cl :ningle :xt3.web.base
-        :parse-number)
+  (:use :cl 
+        :ningle 
+        :xt3.web.base
+        :parse-number
+        :websocket-driver)
   (:nicknames :mk)
   (:import-from :lack.builder
                 :builder)
@@ -92,6 +99,30 @@
       (clack:stop *handler*)
     (setf *handler* nil)))
 
+#+END_SRC
+** WebSocket
+#+BEGIN_SRC lisp :tangle yes
+(defparameter *ws* nil)
+
+(defvar *ws-server*
+  (lambda (env)
+    (setf *ws* (make-server env))
+    (on :message *ws*
+        (lambda (message)
+          (send *ws* (format nil "[Server] ~A" message))))
+    (lambda (responder)
+      (declare (ignore responder))
+      (start-connection *ws*))))
+
+(defvar *ws-handler* nil)
+(defun ws-start ()
+  (setf *ws-handler* (clack:clackup *ws-server* :port 5000)))
+
+(defun ws-stop ()
+  (prog1
+      (clack:stop *ws-handler*)
+    (setf *ws-handler* nil)
+    (setf *ws* nil)))
 #+END_SRC
 * Arc
 ** COMMENT Layout (Outdated)
@@ -399,9 +430,9 @@
              (index ())))
 #+END_SRC
 ** /order
-*** Add
+*** COMMENT Add
 #+BEGIN_SRC lisp :tangle yes
-;; POST /order/add
+POST /order/add
 (route->
     :POST "/order/add" 
     #'(lambda (params)
@@ -419,6 +450,30 @@
               "ERROR!"))))
 
 #+END_SRC
+
+*** Add (:WebSocket)
+#+BEGIN_SRC lisp :tangle yes
+;; POST /order/add
+(route->
+    :POST "/order/add" 
+    #'(lambda (params)
+        (let* ((name (cdr (assoc "goods-name" params :test #'string=)))
+               (i (index-by-name *inventory* name))
+               (ins ()))
+          (or (and i
+                   (setf ins (add-item *order*
+                                       name
+                                       (item-by-name *order* name)
+                                       (table-by-index *inventory* i)))
+                   ;; Ws
+                   (progn
+                     (send *ws* (to-json (list :msg "add" :ins ins)))
+                     "Successful"))
+              ;; Error
+              "ERROR!"))))
+
+#+END_SRC
+
 
 *** COMMENT Del
 #+BEGIN_SRC lisp :tangle yes
@@ -771,19 +826,59 @@
      ,(order-css)
      ,(inventory-css))))
 #+END_SRC
+*** COMMENT Js
+#+BEGIN_SRC lisp :tangle yes
+(defun index-js ()
+  (concat
+   (ps*
+    ;; jQuery Instruction
+    `(defun jq-ins (data) ,(jq-ins))
+    ;; Ajax
+    `(defun jq-ajax (url data)
+       ,(jq-ajax 'url
+                 :data 'data
+                 :suc '(jq-ins data)))
+    ;; Content
+    (goods-js)
+    (order-js))
+   (inventory-js)))
+#+END_SRC
+
 *** Js
 #+BEGIN_SRC lisp :tangle yes
 (defun index-js ()
   (concat
    (ps*
+    ;; Websocket
+    `(var ws null)
+    `(defun ws-start ()
+       (setf ws (new (*web-socket "ws://localhost:5000/")))
+       (setf (@ ws onopen) (lambda (e)
+                             (chain console (log "Connection open..."))))
+       (setf (@ ws onmessage) (lambda (e)
+                                ;; (chain console (log (+ "Mes: " (@ json "MSG"))))
+                                (var json (chain |json| (parse (@ e data))))
+                                (var ins (@ json "INS"))
+                                (case (@ json "MSG")
+                                  ("add" (jq-ins json))
+                                  (t ins))))
+       (setf (@ ws onclose) (lambda (e)
+                              (chain console (log "Connection closed")))))
+    `(ws-start)
+    ;; jQuery Instruction
     `(defun jq-ins (data) ,(jq-ins))
+    ;; Ajax
     `(defun jq-ajax (url data)
        ,(jq-ajax 'url
                  :data 'data
                  :suc '(jq-ins data)))
+    ;; Content
     (goods-js)
     (order-js))
    (inventory-js)))
+
+
+
 #+END_SRC
 ** -----
 ** Goods
@@ -846,7 +941,7 @@
                   (".status:hover" (:background "orange"
                                                 :color "white")))))))
 #+END_SRC
-*** Js
+*** COMMENT Js
 #+BEGIN_SRC lisp :tangle yes
 (defun goods-js ()
   '(defun add-order-item (obj)
@@ -856,6 +951,19 @@
                    ($ obj) (parent) (children ".name")
                    (text))))))
 #+END_SRC
+*** Js (:WebSocket)
+#+BEGIN_SRC lisp :tangle yes
+(defun goods-js ()
+  `(defun add-order-item (obj)
+     ,(jq-ajax "/order/add"
+               :data '(create
+                       :goods-name (chain
+                                       ($ obj) (parent) (children ".name")
+                                       (text)))
+               :suc '(progn
+                      (chain ($ obj) (blur))))))
+#+END_SRC
+
 
 ** Order
 *** Htm
@@ -1095,3 +1203,4 @@
                                             (parents ".table"))))
                 :val (chain ($ obj) (val)))))))
 #+END_SRC
+
