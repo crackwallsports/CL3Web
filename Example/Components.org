@@ -1,0 +1,1081 @@
+#+TITLE: Components
+#+AUTHOR: Xt3
+
+* Source
+- [[https://hackernoon.com/building-a-movie-app-interface-with-vue-js-cdc8aeb5db0][Building a movie app interface with Vue.js]]
+* Load
+#+BEGIN_SRC lisp
+;; Package
+(ql:quickload '( ;; Web Framework
+                :ningle :lack :clack
+                ;; Websocket
+                :websocket-driver
+                ;; Router
+                :myway
+                ;; JS
+                :parenscript
+                ;; JSON
+                :jonathan
+                ;; Parse Real Number
+                :parse-number
+                ;; Regex
+                :cl-ppcre)
+              :silent t)
+
+;; Helper
+(load "base")
+
+;; Components
+(load "components")
+(com:start :port 3000)
+(com:stop)
+
+(in-package :com)
+(defun re-com ()
+  (if *handler*
+      (stop))
+  (load "components")
+  (start :port 3000))
+#+END_SRC
+* Base
+** Package
+#+BEGIN_SRC lisp :tangle yes
+(in-package :cl-user)
+(defpackage components
+  (:use :cl 
+        :ningle 
+        :xt3.web.base
+        :parse-number
+        :websocket-driver
+        :cl-ppcre)
+  (:nicknames :com)
+  (:import-from :lack.builder
+                :builder)
+  (:import-from :lack.response
+                :response-headers
+                :response-body
+                :response-status
+                :finalize-response)
+  (:import-from :parenscript
+                :ps
+                :ps*
+                :chain
+                :create
+                :new
+                :var
+                :@
+                :getprop)
+  (:import-from :myway
+                :make-mapper
+                :connect
+                :dispatch)
+  (:import-from :jonathan
+                :to-json)
+  (:export :start
+           :stop))
+(in-package :components)
+
+#+END_SRC
+** App
+#+BEGIN_SRC lisp :tangle yes
+;; APP 
+(defparameter *error-log* *standard-output*)
+(defparameter *app* (make-instance '<app>))
+(defvar *handler* nil)
+
+(defun start (&rest args &key server port debug &allow-other-keys)
+  (declare (ignore server port debug))
+  (when *handler*
+    (restart-case (error "Server is already running.")
+      (restart-server ()
+        :report "Restart the server"
+        (stop))))
+  (setf *handler*
+        ;; (apply #'clack:clackup *app* args)
+        (apply #'clack:clackup
+               (builder
+                (:static
+                 :path (lambda (path)
+                         (if (ppcre:scan "^(?:/images/|/css/|/js/|/robot\\.txt$|/favicon\\.ico$)" path)
+                             path
+                             nil))
+                 :root #P"static/") 
+                ,*app*)
+               args)))
+
+(defun stop ()
+  (prog1
+      (clack:stop *handler*)
+    (setf *handler* nil)))
+
+#+END_SRC
+** WebSocket
+#+BEGIN_SRC lisp :tangle yes
+(defparameter *ws* nil)
+
+(defvar *ws-server*
+  (lambda (env)
+    (setf *ws* (make-server env))
+    (on :message *ws*
+        (lambda (message)
+          ;; (send *ws* (format nil "[Server] ~A" message))
+          ;; (format *error-log* "[log] ~A~%" message)
+          (ws->router message)))
+    (lambda (responder)
+      (declare (ignore responder))
+      (start-connection *ws*))))
+
+(defvar *ws-handler* nil)
+(defun ws-start ()
+  (setf *ws-handler* (clack:clackup *ws-server* :port 5000)))
+
+(defun ws-stop ()
+  (prog1
+      (clack:stop *ws-handler*)
+    (setf *ws-handler* nil)
+    (setf *ws* nil)))
+
+#+END_SRC
+* Arc
+* COMMENT Model
+** Helper
+#+BEGIN_SRC lisp :tangle yes
+;; Redundancy Count
+;; (defparameter *rdd-count* 0)
+#+END_SRC
+** (Somthing)
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+#+END_SRC
+*** Base
+#+BEGIN_SRC lisp :tangle yes
+#+END_SRC
+
+* COMMENT DB
+#+BEGIN_SRC lisp :tangle yes
+;;; DB
+(defparameter *some* (make-instance 'some))
+#+END_SRC
+
+* Router
+** COMMENT /?
+*** !
+#+BEGIN_SRC lisp :tangle yes
+;; POST /?/!
+(route->
+    :POST "/?/!" 
+    #'(lambda (params)
+        (let* ((who (cdr (assoc "who" params :test #'string=)))
+               (ins ()))
+          (or (and i
+                   (setf ins (some-action))
+
+                   ;; WebSocket
+                   (progn
+                     (send *ws* (to-json (list :msg "add" :ins ins)))
+                     "Successful")                                      
+                   ;; Or
+                   ;; <-JSON
+                   (<-json (list :ins ins)))
+              ;; Error
+              "ERROR!"))))
+
+#+END_SRC
+** WebSocket
+#+BEGIN_SRC lisp :tangle yes
+(defun ws->router (msg)
+  ;; Movie
+  (send *ws* (to-json (list :msg "movie"
+                            :ins (movie-ins msg)))))
+
+#+END_SRC
+** -----
+** Base
+#+BEGIN_SRC lisp :tangle yes
+;; Router
+#+END_SRC
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+;; Router
+(defmacro route-> (method path body)
+  `(setf (route *app* ,path :method ,method)
+         ,body))
+
+;; JSON
+(defun <-json (plist)
+  (setf (getf (response-headers *response*) :content-type)
+                "application/json")
+  (to-json plist))
+
+
+#+END_SRC
+** /
+#+BEGIN_SRC lisp :tangle yes
+;; GET /
+(route-> :GET "/" 
+         #'(lambda (params)
+             (declare (ignore params))
+             (index ())))
+#+END_SRC
+
+
+* View
+** COMMENT Some
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun some-htm ()
+  `(div (:class "")
+        (ul (:class "list")
+            ;; Items
+            ,@(map 'list
+                   #'some-item-htm
+                   ,*some*))))
+
+(defun some-item-htm (item)
+  (with-slots () item
+    `(li ())))
+
+#+END_SRC
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun some-css ()
+  '(".some" ()))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun some-js ()
+  '(defun some-item (obj)
+    (jq-ajax "/?/!"
+     (create
+      :who (chain ($ obj) (text))))
+    ;; OR
+    ,(jq-ajax "/?/!"
+               :data '(create
+                       :who (chain ($ obj) (text)))
+               :suc '(progn (chain ($ obj) (blur))))))
+;; OR
+(defun other-js ()
+  (ps*
+   '(var cur-edit (create
+                   obj nil
+                   val ""))
+   
+   `(defun editing (e)
+      (var obj (@ e target))
+      (unless (chain ($ obj) (has-class "editing"))
+        (setf (@ cur-edit obj) obj
+              (@ cur-edit val) (chain ($ obj) (val)))
+        (chain ($ obj) (toggle-class "editing"))))
+
+   `(defun edited (e)
+      (var obj (@ e target))
+      (case (@ e key-code)
+        (27 ;; "Escape"
+         (chain ($ obj) (blur)))
+        (13 ;; "Enter"
+         ,(jq-ajax "/?"
+                   :data nil
+                   :suc '(progn
+                          (chain ($ obj) (blur))
+                          (jq-ins data))))
+        (t nil)))
+   
+   `(defun edit-cancel ()
+      (chain
+       ($ (@ cur-edit obj))
+       (val (@ cur-edit val))
+       (remove-class "editing"))
+      (setf (@ cur-edit obj) nil
+            (@ cur-edit val) ""))))
+#+END_SRC
+** -----
+** Base
+*** Helper
+#+BEGIN_SRC lisp :tangle yes
+;; CSS
+(defun x-browser (att val &optional (browser '("webkit" "moz" "ms")))
+  (nconc (let ((ls))
+           (loop for i in browser
+              do (progn (push (make-keyword (format nil "-~A-~A" i att)) ls)
+                        (push val ls)))
+           (nreverse ls))
+         (list (make-keyword att) val)))
+
+;; JS
+(defun jq-ajax (url &key (type "post") (data "") suc
+                      (err '(alert (@ jqXHR response-text))))
+  `(chain
+    $
+    (ajax (create
+           url ,url
+           type ,type
+           data ,data
+           success (lambda (data status)
+                     (if (= status "success")
+                         ,suc))
+           error (lambda (jqXHR textStatus errorThrown)
+                   ,err)))))
+
+
+(defun jq-ins ()
+  `(let ((ins (@ data "INS")))
+     (chain
+      ins
+      (for-each (lambda (item)
+                  (let ((target (@ item "TAG"))
+                        (methods (@ item "MES")))
+                    (chain
+                     methods
+                     (for-each (lambda (item)
+                                 (let ((action (@ item "ACT"))
+                                       (content (@ item "CON")))
+                                   ((getprop ($ target) action) content)))))))))))
+#+END_SRC
+*** Layout
+#+BEGIN_SRC lisp :tangle yes
+(defun layout-template (args &key (title "标题") links head-rest content scripts)
+  (declare (ignore args))
+  `(,(doctype)
+     (html (:lang "en")
+           (head ()
+                 (meta (:charset "utf-8"))
+                 (meta (:name "viewport"
+                              :content "width=device-width, initial-scale=1, shrink-to-fit=no"))
+                 (meta (:name "description" :content "?"))
+                 (meta (:name "author" :content "Xt3"))
+                 (title nil ,title)
+                 ,@links
+                 ,@head-rest)
+           (body ()
+                 ,@content
+                 ,@scripts))))
+
+#+END_SRC
+** Index
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun index (args)
+  (->html
+   (layout-template
+    args
+    :title (or (getf args :title) "我的组件")
+    :links `()
+    :head-rest
+    `((style () ,(index-css)))
+    :content
+    `((div (:class "components")
+           ;; ,(mobile-htm)
+           ,(movie-htm)))
+    :scripts
+    `((script (:src "js/jquery-3.2.1.min.js"))
+      (script () ,(index-js))))))
+#+END_SRC
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun index-css ()
+  (->css
+   `((* (:margin 0 :padding 0
+                 :box-sizing "border-box"
+                 :outline "none"))
+     (html (:height "100vh"))
+     (body (:background "#f5f5f5" :font-size "14px"
+                        :height "100%"
+                        :padding "50px"))
+     (a (:text-decoration "none"
+                          :color "#bfbfbf"))
+     ("a:hover" (:text-decoration "underline"
+                                  :color "#000"))
+     ("::-webkit-input-placeholder" (:color "#e6e6e6"
+                                            :font-style "italic"))
+     ("input" (:border "none"
+                       :font-size "14px"
+                       :padding "1px 2px 1px 5px"))
+     
+     ("ul" (:list-style "none"))
+     
+     ;; Float
+     (".left" (:float "left"))
+     (".right" (:float "right"))
+     
+     ;; Gird
+     ,@(loop for i from 1 to 12
+          collect
+            `(,(format nil ".w-~a" i)
+               (:width ,(format nil "~D%" (round (* 100 (/ i 12))))
+                       :float "left")))
+     ;; (".w-1" (:WIDTH "8%" :FLOAT "left"))
+     
+     ;; Disabled
+     (".disabled" (:pointer-events "none"))
+
+     ;; Circle
+     (".circle" (:border "1px solid"
+                         :border-radius "50%"))
+     
+     ;; Components
+     (".components"
+      ()
+      ;; ,(mobile-css)
+      ,(movie-css)))))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun index-js ()
+  (concat
+   (ps*
+    ;; Websocket
+    `(var ws null)
+    `(defun ws-start ()
+       (setf ws (new (*web-socket "ws://localhost:5000/")))
+       (setf (@ ws onopen) (lambda (e)
+                             (chain console (log "Connection open..."))))
+       (setf (@ ws onmessage) (lambda (e)
+                                ;; (chain console (log (+ "Mes: " (@ json "MSG"))))
+                                (var json (chain |json| (parse (@ e data))))
+                                (var ins (@ json "INS"))
+                                (case (@ json "MSG")
+                                  ("movie" (ws-movie json))
+                                  (t ins))))
+       (setf (@ ws onclose) (lambda (e)
+                              (chain console (log "Connection closed")))))
+    `(defun ws-router (route)
+       (chain ws (send route)))
+    `(ws-start)
+    ;; jQuery Instruction
+    `(defun jq-ins (data) ,(jq-ins))
+    ;; Ajax
+    `(defun jq-ajax (url data)
+       ,(jq-ajax 'url
+                 :data 'data
+                 :suc '(jq-ins data)))
+    ;; Content
+    ;; (mobile-js)
+    (movie-js))))
+
+#+END_SRC
+** -----
+** COMMENT Mobile
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun mobile-htm ()
+  `(div (:class "mobile") "移动"))
+#+END_SRC
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun mobile-css ()
+  '(".mobile" (:width "340px" :height "600px" :margin "auto"
+               :border "1px solid")))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun mobile-js () "")
+#+END_SRC
+** -----
+** Movie
+*** Vue.js
+**** data
+#+BEGIN_SRC js
+const movies = {
+  "dunkirk": {
+    "id": 'dunkirk',
+    "title": "Dunkirk",
+    "subtitle": "Dunkirk",
+    "description": `Miraculous evacuation of Allied soldiers from Belgium, Britain, Canada, and France, who were cut off and surrounded by the German army from the beaches and harbor of Dunkirk, France, during the Battle of France in World War II.`,
+    "largeImgSrc": `url('https://image.tmdb.org/t/p/w780/fudEG1VUWuOqleXv6NwCExK0VLy.jpg')`,
+    "smallImgSrc": 'https://image.tmdb.org/t/p/w185/fudEG1VUWuOqleXv6NwCExK0VLy.jpg',
+    "releaseDate": 'July 21 2017',
+    "duration": '1hr 46min',
+    "genre": 'Action, Drama, History',
+    "trailerPath": 'https://www.youtube.com/embed/F-eMt3SrfFU',
+    "favorite": false
+  },
+  "interstellar": {
+    "id": 'interstellar',
+    "title": "Interstellar",
+    "subtitle": "Interstellar",
+    "description": `Interstellar chronicles the adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.`,
+    "largeImgSrc": `url('https://image.tmdb.org/t/p/w780/xu9zaAevzQ5nnrsXN6JcahLnG4i.jpg')`,
+    "smallImgSrc": 'https://image.tmdb.org/t/p/w185/xu9zaAevzQ5nnrsXN6JcahLnG4i.jpg',
+    "releaseDate": 'November 7 2014',
+    "duration": '2hr 49min',
+    "genre": 'Adventure, Drama',
+    "trailerPath": 'https://www.youtube.com/embed/zSWdZVtXT7E',
+    "favorite": false
+  },
+  "the-dark-knight-rises": {
+    "id": 'the-dark-knight-rises',
+    "title": "The Dark Knight Rises",
+    "subtitle": "TDKR",
+    "description": `Batman encounters the mysterious Selina Kyle and the villainous Bane, a new terrorist leader who overwhelms Gotham's finest. The Dark Knight resurfaces to protect a city that has branded him an enemy.`,
+    "smallImgSrc": 'https://image.tmdb.org/t/p/w185/3bgtUfKQKNi3nJsAB5URpP2wdRt.jpg',
+    "largeImgSrc": `url('https://image.tmdb.org/t/p/w780/3bgtUfKQKNi3nJsAB5URpP2wdRt.jpg')`,
+    "releaseDate": 'July 20 2012',
+    "duration": '2hr 44min',
+    "genre": 'Action, Thriller',
+    "trailerPath": 'https://www.youtube.com/embed/g8evyE9TuYk',
+    "favorite": false
+  },
+  "inception": {
+    "id": 'inception',
+    "title": "Inception",
+    "subtitle": "Inception",
+    "description": `Cobb, a skilled thief is offered a chance to regain his old life as payment for a task considered to be impossible: \"inception\", the implantation of another person's idea into a target's subconscious.`,
+    "smallImgSrc": 'https://image.tmdb.org/t/p/w185/s2bT29y0ngXxxu2IA8AOzzXTRhd.jpg',
+    "largeImgSrc": `url('https://image.tmdb.org/t/p/w780/s2bT29y0ngXxxu2IA8AOzzXTRhd.jpg')`,
+    "releaseDate": 'July 10 2010',
+    "duration": '2hr 28min',
+    "genre": 'Action, Adventure, Sci-Fi',
+    "trailerPath": 'https://www.youtube.com/embed/8hP9D6kZseM',
+    "favorite": false
+  },
+  "the-prestige": {
+    "id": 'the-prestige',
+    "title": "The Prestige",
+    "subtitle": "Prestige",
+    "description": `A mysterious story of two magicians whose intense rivalry leads them on a life-long battle for supremacy - to create the ultimate illusion whilst sacrificing everything they have to outwit the other.`,
+    "smallImgSrc": 'https://image.tmdb.org/t/p/w185/c5o7FN2vzI7xlU6IF1y64mgcH9E.jpg',
+    "largeImgSrc": `url('https://image.tmdb.org/t/p/w780/c5o7FN2vzI7xlU6IF1y64mgcH9E.jpg')`,
+    "releaseDate": 'October 20 2006',
+    "duration": '2hr 10min',
+    "genre": 'Drama, Mystery, Sci-Fi',
+    "trailerPath": 'https://www.youtube.com/embed/ijXruSzfGEc',
+    "favorite": false
+  }
+}
+#+END_SRC
+**** htm
+#+BEGIN_SRC html
+<div id="app">
+ <section class="hero is-primary is-medium">
+   
+   <router-view></router-view>
+
+  <div class="hero-foot">
+   <div class="columns is-mobile">
+     <div v-for="movieChoice in movieChoices" class="column">
+
+       <router-link :to="`/${movieChoice.id}`" 
+                    tag="li"    
+                    class="movie-choice">
+         <i :class="[{ 'fa fa-check-circle favorite-check':  movieChoice.favorite }]"></i>
+         <img :src="`${movieChoice.smallImgSrc}`" class="desktop"/>
+         <p class="mobile">{{ movieChoice.subtitle }}</p>
+       </router-link>
+       <!-- 
+       <li class="movie-choice">
+         <img :src="`${movieChoice.smallImgSrc}`" class="desktop"/>
+         <p class="mobile">{{ movieChoice.subtitle }}</p>
+       </li>
+       -->
+     </div>
+    </div>
+  </div>
+ </section>
+</div>
+
+#+END_SRC
+**** js
+***** App
+#+BEGIN_SRC js
+// App
+const rootApp = new Vue({
+    el: '#app',
+    router: router,  // ++
+    data() {
+        return {
+            movieChoices: movies 
+        }
+    }
+})
+#+END_SRC
+***** Component
+#+BEGIN_SRC js
+// Component
+#+END_SRC
+****** Intro
+#+BEGIN_SRC js
+// Intro
+const Intro = {
+    template:
+    `<div class="hero-body" style="background: #1e1d1d">
+      <div class="container has-text-centered">
+        <div class="columns">
+          <div class="column is-half is-offset-one-quarter vertical-align">
+            <h1 class="home-intro">
+              VueFlix
+            </h1>
+            <p class="home-subintro">Select a movie below from the list of critically acclaimed Christopher Nolan films.</p>
+          </div>
+        </div>
+      </div>
+    </div>`
+}
+#+END_SRC
+****** Movie
+#+BEGIN_SRC js
+// Movie
+const Movie = {
+  template: 
+    `<div>
+      <div class="hero-body">
+       <div class="container has-text-centered">
+        <div class="columns">
+         <div class="column is-half is-offset-one-quarter vertical-align">
+          <h1 class="home-intro">
+           {{ selectedMovie.title }}
+          </h1>
+         </div>
+        </div>
+       </div>
+      </div>
+    </div>`
+//=>
+`<div :class="[{ 'favorite-shadow': selectedMovie.favorite }, 'hero-body']"
+    :style="{ 'background-image': selectedMovie.largeImgSrc }">
+    <header class="nav">
+     <div class="container">
+      <div class="nav-left">
+       <a class="nav-item">
+        <i class="fa fa-bars" aria-hidden="true"></i>
+       </a>
+       <router-link to="/" class="nav-item is-active">
+        Home
+       </router-link>
+       <a class="nav-item is-active">
+        <span class="tag is-rounded">Films</span>
+       </a>
+       <a class="nav-item is-active">
+        Shows
+       </a>
+       <a class="nav-item is-active">
+        Music
+       </a>
+      </div>
+      <div class="nav-right desktop">
+       <span class="nav-item">
+        <a class="title">
+         VueFlix
+        </a>
+       </span>
+      </div>
+     </div>
+    </header>
+    <div class="container description-container">
+     <div class="columns">
+      <div class="column is-three-quarters">
+       <h1 class="title">{{ selectedMovie.title }}</h1>
+       <h4 class="subtitle">
+        <p class="subtitle-tag">{{ selectedMovie.duration }}</p>
+        <p class="subtitle-tag">{{ selectedMovie.genre }}</p>
+        <p class="subtitle-tag">{{ selectedMovie.releaseDate }}</p>
+       </h4>
+       <p class="description">{{ selectedMovie.description }}</p>
+       <div class="links">
+        <router-link 
+          :to="{path: '/' + $route.params.id + '/trailer'}"   
+          class="button play-button">
+           Play <i class="fa fa-play"></i>
+        </router-link>
+      <a 
+       class="button is-link favorites-button"
+       @click="addToFavorites">
+      <span
+       :class="[{ 'hide': selectedMovie.favorite }]">
+       Add to
+      </span>
+      <span
+       :class="[{ 'hide': !selectedMovie.favorite }]">
+       Remove from
+      </span>
+       &nbsp;favorites 
+       <i class="fa fa-plus-square-o"></i>
+      </a>
+       </div>
+      </div>
+     </div>
+    </div>
+   </div>`,
+  data () {
+    return {
+      selectedMovie: movies[this.$route.params.id]
+    }
+  },
+  watch: {
+    $route () {
+      this.selectMovie()
+    }
+  },
+  methods: {
+      selectMovie () {
+          this.selectedMovie = movies[this.$route.params.id]
+      },
+      addToFavorites() {
+          movies[this.$route.params.id].favorite = !movies[this.$route.params.id].favorite
+      }
+  }
+}
+#+END_SRC
+****** Movie Trailer
+#+BEGIN_SRC js
+const MovieTrailer = {
+ template: `
+  <div class="trailer-body" style="background: #1e1d1d">
+   <div class="has-text-centered">
+    <div class="columns">
+     <div class="column vertical-align">
+      <iframe
+       allowFullScreen
+       frameborder="0"
+       height="376"
+       :src="trailerUrlPath"
+       style="width: 100%; min-width: 536px"
+      />
+     </div>
+    </div>
+   </div>
+  </div>`,
+  data () {
+   return {
+    trailerUrlPath: movies[this.$route.params.id].trailerPath
+   }
+  }
+}
+#+END_SRC
+***** Router
+#+BEGIN_SRC js
+// Router
+const routes = [
+    { path: '/', component: Intro },
+    { path: '/:id', component: Movie },
+    { path: '/:id/trailer', component: MovieTrailer }
+]
+const router = new VueRouter({
+    routes
+})
+#+END_SRC
+**** css
+#+BEGIN_SRC css
+.favorite-shadow {
+  box-shadow: 0 0 50px 15px rgba(251, 255, 15, 0.25);
+}
+.favorite-check {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  z-index: 1;
+  color: #fcff4c;
+            
+  @media(max-width: $medium) {
+   position: initial;
+   display: block;
+  }
+}
+#+END_SRC
+*** -----
+*** Model
+#+BEGIN_SRC lisp :tangle yes
+(defclass movie ()
+  ((id :initarg :id
+       :accessor id)
+   (title :initarg :title
+          :accessor title)
+   (subtitle :initarg :subtitle
+             :accessor subtitle)
+   (description :initarg :description
+                :accessor description)
+   (large-img-src :initarg :large-img-src
+                  :accessor large-img-src)
+   (small-img-src :initarg :small-img-src
+                  :accessor small-img-src)
+   (release-date :initarg :release-date
+                 :accessor release-date)
+   (duration :initarg :duration
+             :accessor duration)
+   (genre :initarg :genre
+          :accessor genre)
+   (trailer-path :initarg :trailer-path
+                 :accessor trailer-path)
+   (favorite :initarg :favorite
+             :accessor favorite)))
+#+END_SRC
+*** Data
+#+BEGIN_SRC lisp :tangle yes
+(defparameter *movies* (make-hash-table :test #'equal))
+(maphash (lambda (k v)
+           (setf (gethash k *movies*)
+                 (make-instance 'movie
+                                :id (gethash "id" v)
+                                :title (gethash "title" v)
+                                :subtitle (gethash "subtitle" v)
+                                :description (gethash "description" v)
+                                :large-img-src (gethash "largeImgSrc" v)
+                                :small-img-src (gethash "smallImgSrc" v)
+                                :release-date (gethash "releaseDate" v)
+                                :duration (gethash "duration" v)
+                                :genre (gethash "genre" v)
+                                :trailer-path (gethash "trailerPath" v)
+                                :favorite (gethash "favorite" v))))
+         (jojo:parse "{
+\"dunkirk\": {
+    \"id\": \"dunkirk\",
+    \"title\": \"Dunkirk\",
+    \"subtitle\": \"Dunkirk\",
+    \"description\": \"Miraculous evacuation of Allied soldiers from Belgium, Britain, Canada, and France, who were cut off and surrounded by the German army from the beaches and harbor of Dunkirk, France, during the Battle of France in World War II.\",
+    \"largeImgSrc\": \"url('https://image.tmdb.org/t/p/w780/fudEG1VUWuOqleXv6NwCExK0VLy.jpg')\",
+    \"smallImgSrc\": \"https://image.tmdb.org/t/p/w185/fudEG1VUWuOqleXv6NwCExK0VLy.jpg\",
+    \"releaseDate\": \"July 21 2017\",
+    \"duration\": \"1hr 46min\",
+    \"genre\": \"Action, Drama, History\",
+    \"trailerPath\": \"https://www.youtube.com/embed/F-eMt3SrfFU\",
+    \"favorite\": false
+  },
+\"interstellar\": {
+    \"id\": \"interstellar\",
+    \"title\": \"Interstellar\",
+    \"subtitle\": \"Interstellar\",
+    \"description\": \"Interstellar chronicles the adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.\",
+    \"largeImgSrc\": \"url('https://image.tmdb.org/t/p/w780/xu9zaAevzQ5nnrsXN6JcahLnG4i.jpg')\",
+    \"smallImgSrc\": \"https://image.tmdb.org/t/p/w185/xu9zaAevzQ5nnrsXN6JcahLnG4i.jpg\",
+    \"releaseDate\": \"November 7 2014\",
+    \"duration\": \"2hr 49min\",
+    \"genre\": \"Adventure, Drama\",
+    \"trailerPath\": \"https://www.youtube.com/embed/zSWdZVtXT7E\",
+    \"favorite\": false
+  },
+\"the-dark-knight-rises\": {
+    \"id\": \"the-dark-knight-rises\",
+    \"title\": \"The Dark Knight Rises\",
+    \"subtitle\": \"TDKR\",
+    \"description\": \"Batman encounters the mysterious Selina Kyle and the villainous Bane, a new terrorist leader who overwhelms Gotham's finest. The Dark Knight resurfaces to protect a city that has branded him an enemy.\",
+    \"smallImgSrc\": \"https://image.tmdb.org/t/p/w185/3bgtUfKQKNi3nJsAB5URpP2wdRt.jpg\",
+    \"largeImgSrc\": \"url('https://image.tmdb.org/t/p/w780/3bgtUfKQKNi3nJsAB5URpP2wdRt.jpg ')\",
+    \"releaseDate\": \"July 20 2012\",
+    \"duration\": \"2hr 44min\",
+    \"genre\": \"Action, Thriller\",
+    \"trailerPath\": \"https://www.youtube.com/embed/g8evyE9TuYk\",
+    \"favorite\": false
+  },
+\"inception\": {
+    \"id\": \"inception\",
+    \"title\": \"Inception\",
+    \"subtitle\": \"Inception\",
+    \"description\": \"Cobb, a skilled thief is offered a chance to regain his old life as payment for a task considered to be impossible: inception, the implantation of another person's idea into a target's subconscious.\",
+    \"smallImgSrc\": \"https://image.tmdb.org/t/p/w185/s2bT29y0ngXxxu2IA8AOzzXTRhd.jpg\",
+    \"largeImgSrc\": \"url('https://image.tmdb.org/t/p/w780/s2bT29y0ngXxxu2IA8AOzzXTRhd.jpg')\",
+    \"releaseDate\": \"July 10 2010\",
+    \"duration\": \"2hr 28min\",
+    \"genre\": \"Action, Adventure, Sci-Fi\",
+    \"trailerPath\": \"https://www.youtube.com/embed/8hP9D6kZseM\",
+    \"favorite\": false
+  },
+\"the-prestige\": {
+    \"id\": \"the-prestige\",
+    \"title\": \"The Prestige\",
+    \"subtitle\": \"Prestige\",
+    \"description\": \"A mysterious story of two magicians whose intense rivalry leads them on a life-long battle for supremacy - to create the ultimate illusion whilst sacrificing everything they have to outwit the other.\",
+    \"smallImgSrc\": \"https://image.tmdb.org/t/p/w185/c5o7FN2vzI7xlU6IF1y64mgcH9E.jpg\",
+    \"largeImgSrc\": \"url('https://image.tmdb.org/t/p/w780/c5o7FN2vzI7xlU6IF1y64mgcH9E.jpg')\",
+    \"releaseDate\": \"October 20 2006\",
+    \"duration\": \"2hr 10min\",
+    \"genre\": \"Drama, Mystery, Sci-Fi\",
+    \"trailerPath\": \"https://www.youtube.com/embed/ijXruSzfGEc\",
+    \"favorite\": false
+  }
+}" :as :hash-table))
+
+
+;; (maphash (lambda (k v)
+;;            (format t "~A = ~A~%" k v)
+;;            (format t "id = ~A~%" (id v)))
+;;          *movies*)
+
+#+END_SRC
+*** Operation
+#+BEGIN_SRC lisp :tangle yes
+(defun movie-by-id (id)
+  (gethash id *movies*))
+
+;; Instruction
+(defun movie-ins (msg)
+  (list
+   (list :tag ".detail"
+         :mes `((:act "html" :con ,(movie-router msg))))))
+#+END_SRC
+*** Router
+#+BEGIN_SRC lisp :tangle yes
+;; (defun movie-router (route)
+;;   (case-str route
+;;     ("/" (intro-htm))
+;;     ("/:id" (intro-htm))
+;;     (t "")))
+
+(defun movie-router (route)
+  (let ((mapper (make-mapper)))
+    (connect mapper "/" (->html (intro-htm)))
+    (connect mapper "/:id" (lambda (params)
+                             (->html (movie-item-htm (getf params :id)))))
+    (connect mapper "/:id/trailer" (lambda (params)
+                                     (->html (movie-trailer-htm (getf params :id)))))
+    (or (dispatch mapper route) "")))
+
+
+;; (let ((mapper (make-mapper)))
+;;     (connect mapper "/" "index")
+;;     (connect mapper "/:id" (lambda (params)
+;;                              (getf params :id)))
+;;     (or (dispatch mapper "/ss/dkn") ""))
+#+END_SRC
+*** Htm
+#+BEGIN_SRC lisp :tangle yes
+(defun movie-htm ()
+  `(div (:class "movie")
+        (div (:class "detail")
+             ,(movie-router "/"))
+        (div (:class "show")
+             (ul (:class "row")
+                 ,@(let ((items))
+                     (maphash (lambda (k v)
+                                (push (show-item-htm v) items))
+                              ,*movies*)
+                     items)))))
+
+(defun intro-htm ()
+  `(div (:class "intro")
+        (h1 (:class "title") "CL3FLIX")
+        (p (:class "subtitle")
+           "Select a movie below from the list of critically acclaimed Christopher Nolan films.")))
+
+(defun movie-item-htm (id)
+  (with-slots (id title description
+                  duration genre release-date
+                  large-img-src
+                  favorite)
+      (movie-by-id id)
+    `(div (:class ,(concat (if favorite "favorite-shadow " " ")
+                           "item")
+                  :style ,(concat "background-image: " large-img-src))
+          (div (:class "header nav")
+               (div (:class "nav-left")
+                    (div (:class "nav-item")
+                         (i (:class "bars")))
+                    (div (:class "nav-item")
+                         (span (:onclick "wsRouter('/')")
+                               "Home"))
+                    (div (:class "nav-item tag")
+                         (span ( :onclick "wsRouter('/films')") "Films"))
+                    (div (:class "nav-item")
+                         (span (:onclick "wsRouter('/shows')") "Shows"))
+                    (div (:class "nav-item")
+                         (span (:onclick "wsRouter('/music')") "Music")))
+               (div (:class "nav-right")
+                    (div (:class "nav-item") "CL3Flix")))
+          (div (:class "content")
+               (h1 (:class "title") ,title)
+               (h4 (:class "subtitle")
+                   (p (:class "subtitle-tag") ,duration " | ")
+                   (p (:class "subtitle-tag") ,genre " | ")
+                   (p (:class "subtitle-tag") ,release-date))
+               (p (:class "description") ,description)
+               (div (:class "links")
+                    (span (:class "play" :onclick ,(concat "wsRouter('/" id "/trailer')" ))
+                            "Play"
+                            (i (:class "fa fa-play")))
+                    (span (:class "favorite" :onclick ,(concat "favorite('" id "')"))
+                            ,(if favorite "Remove from Favorite" "Add to Favorite")))))))
+
+(defun movie-trailer-htm (id)
+  (with-slots (trailer-path) (movie-by-id id)
+    `(div (:class "trailer")
+          (iframe (:allowfullscreen "allowfullscreen"
+                                    :frameborder "0"
+                                :src ,trailer-path )))))
+
+(defun show-item-htm (item)
+  (with-slots (id small-img-src) item
+    `(li (:class "item" :onclick ,(concat "wsRouter('/" id "')"))
+         (img (:src ,small-img-src))
+         ;; (span (:class "test circle") "%")
+         )))
+
+#+END_SRC
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun movie-css ()
+  '(".movie" (:margin "auto 20px" :height "550px"
+              ;; :border "1px solid"
+              :display "flex" :flex-flow "column"
+              :box-shadow "0px 0px 60px 0px black")
+    (".detail" (:display "flex" :align-items "center"
+                :height "75%"
+                :background "#000")
+     (".intro" (:text-align "center" :margin "auto")
+      (".title" (:color "#f00" :font-size "4em"
+                        :letter-spacing "3px"))
+      (".subtitle" (:color "#fff" :font-size "1.3em"
+                           :width "80%" :margin "auto")))
+     (".item" (:width "100%" :height "100%"
+                      :color "#fff"
+                      :background-size "cover"
+                      :background-blend-mode "multiply"
+                      :background-color "rgba(0, 0, 0, 0.3)")
+      (".header" (:display "flex" :align-items "center"
+                           :height "20%"
+                           :font-size "1.5em")
+                 (".nav-left" (:display "flex" :align-items "center"
+                                        :width "80%"))
+                 (".nav-right" (:text-align "right"
+                                            :width "20%"
+                                            :color "#f00"))
+                 (".nav-item" (:margin "0 10px" :padding " 3px 9px"
+                                       :cursor "pointer"))
+                 (".tag" (:border-radius "19px"
+                                         :color "#000" :background "#fff"))
+                 (".bars::before" (:content "'\\f0c9'"
+                                            :font-size "2em"
+                                            :color "#f00")))
+      (".content" (:padding "10px 60px" :height "80%")
+                  (".title" (:font-size "3em"))
+                  (".subtitle" (:display "flex" :color "#f00"
+                                         :font-size "1.3em"
+                                         :margin "5px 0")
+                               ("p" (:margin "0 5px 0 0")))
+                  (".description" (:line-height "1.5em"
+                                                :width "80%"
+                                                :font-size "1.2em"
+                                                :min-height "110px"))
+                  (".links" (:margin-top "20px"))
+                  (".play" (:border-radius "30px"
+                                           :background "#f00"
+                                           :padding "10px 20px"
+                                           :font-size "1.3em"
+                                           :cursor "pointer"))
+                  (".favorite" (:margin-left "20px"
+                                             :padding "0 10px"
+                                             :cursor "pointer"))))
+     (".trailer" (:width "100%" :height "100%")
+      ("iframe" (:width "100%" :height "100%"))))
+    (".show" (:display "flex" :align-items "center"
+              :width "100%" :height "25%"
+              :padding "10px" ;; :border "1px solid"
+              :background "linear-gradient(to bottom right, #7d1e24, #bb2d35)")
+     (".row" (:display "flex" :width "100%"))
+     (".item" (:width "20%" :height "100px"
+                      :position "relative"
+                      :margin "0 5px"
+                      ;; :border "1px dashed" 
+                      ))
+     ("img" (:height "100%" :width "100%"))
+     (".test" (:width "20px" :height "20px"
+                      :position "absolute" :right 0 :top 0
+                      :text-align "center")))))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun movie-js ()
+  `(defun ws-movie (ins)
+     (jq-ins ins)))
+
+#+END_SRC
