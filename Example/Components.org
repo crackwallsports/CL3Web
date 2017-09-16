@@ -3,6 +3,7 @@
 
 * Source
 - [[https://hackernoon.com/building-a-movie-app-interface-with-vue-js-cdc8aeb5db0][Building a movie app interface with Vue.js]]
+- [[http://chibicode.com/react-js-introduction-for-people-who-know-just-enough-jquery-to-get-by/][React.js Introduction For People Who Know Just Enough jQuery To Get By]]
 * Load
 #+BEGIN_SRC lisp
 ;; Package
@@ -185,8 +186,11 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun ws->router (msg)
   ;; Movie
-  (send *ws* (to-json (list :msg "movie"
-                            :ins (movie-ins msg)))))
+  ;; (send *ws* (to-json (list :msg "movie"
+  ;;                           :ins (movie-ins msg))))
+  ;; Twitter-box
+  (send *ws* (to-json (list :msg "twitter-box"
+                            :ins (twitter-box-ins msg)))))
 
 #+END_SRC
 ** -----
@@ -293,6 +297,13 @@
 ** Base
 *** Helper
 #+BEGIN_SRC lisp :tangle yes
+;; Instruction
+(defun make-ins (tar &rest mes)
+  (list :tag tar
+        :mes (loop for (act con) in mes
+                collect (list :act act
+                              :con con))))
+
 ;; CSS
 (defun x-browser (att val &optional (browser '("webkit" "moz" "ms")))
   (nconc (let ((ls))
@@ -366,7 +377,8 @@
     :content
     `((div (:class "components")
            ;; ,(mobile-htm)
-           ,(movie-htm)))
+           ;; ,(movie-htm)
+           ,(twitter-box-htm)))
     :scripts
     `((script (:src "js/jquery-3.2.1.min.js"))
       (script () ,(index-js))))))
@@ -417,7 +429,8 @@
      (".components"
       ()
       ;; ,(mobile-css)
-      ,(movie-css)))))
+      ;; ,(movie-css)
+      ,(twitter-box-css)))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
@@ -428,6 +441,7 @@
     `(var ws null)
     `(defun ws-start ()
        (setf ws (new (*web-socket "ws://localhost:5000/")))
+       ;; (setf ws (new (*web-socket "ws://10.0.0.7:5000/")))
        (setf (@ ws onopen) (lambda (e)
                              (chain console (log "Connection open..."))))
        (setf (@ ws onmessage) (lambda (e)
@@ -436,6 +450,7 @@
                                 (var ins (@ json "INS"))
                                 (case (@ json "MSG")
                                   ("movie" (ws-movie json))
+                                  ("twitter-box" (ws-twitter-box json))
                                   (t ins))))
        (setf (@ ws onclose) (lambda (e)
                               (chain console (log "Connection closed")))))
@@ -451,7 +466,9 @@
                  :suc '(jq-ins data)))
     ;; Content
     ;; (mobile-js)
-    (movie-js))))
+    ;; (movie-js)
+    )
+   (twitter-box-js)))
 
 #+END_SRC
 ** -----
@@ -472,8 +489,7 @@
 #+BEGIN_SRC lisp :tangle yes
 (defun mobile-js () "")
 #+END_SRC
-** -----
-** Movie
+** COMMENT Movie
 *** Vue.js
 **** data
 #+BEGIN_SRC js
@@ -905,12 +921,6 @@ const router = new VueRouter({
 #+END_SRC
 *** Router
 #+BEGIN_SRC lisp :tangle yes
-;; (defun movie-router (route)
-;;   (case-str route
-;;     ("/" (intro-htm))
-;;     ("/:id" (intro-htm))
-;;     (t "")))
-
 (defun movie-router (route)
   (let ((mapper (make-mapper)))
     (connect mapper "/" (->html (intro-htm)))
@@ -919,13 +929,6 @@ const router = new VueRouter({
     (connect mapper "/:id/trailer" (lambda (params)
                                      (->html (movie-trailer-htm (getf params :id)))))
     (or (dispatch mapper route) "")))
-
-
-;; (let ((mapper (make-mapper)))
-;;     (connect mapper "/" "index")
-;;     (connect mapper "/:id" (lambda (params)
-;;                              (getf params :id)))
-;;     (or (dispatch mapper "/ss/dkn") ""))
 #+END_SRC
 *** Htm
 #+BEGIN_SRC lisp :tangle yes
@@ -1078,4 +1081,223 @@ const router = new VueRouter({
   `(defun ws-movie (ins)
      (jq-ins ins)))
 
+#+END_SRC
+** Tweet Box
+*** jQuery
+**** htm
+#+BEGIN_SRC html
+<body>
+  <div class="well clearfix">
+    <textarea class="form-control"></textarea><br/>
+    <span>140</span>
+    <button class="btn btn-primary pull-right">Tweet</button>
+  </div>
+</body>
+#+END_SRC
+**** js
+#+BEGIN_SRC js
+// Initially disable the button
+$("button").prop("disabled", true);
+
+// When the value of the text area changes...
+$("textarea").on("input", function() {
+    $("span").text(140 - $(this).val().length);
+    // If there's at least one character...
+    if ($(this).val().length > 0) {
+        // Enable the button.
+        $("button").prop("disabled", false);
+    } else {
+        // Else, disable the button.
+        $("button").prop("disabled", true);
+    }
+});
+#+END_SRC
+
+*** React.js
+**** htm
+#+BEGIN_SRC html
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://fb.me/react-15.1.0.js"></script>
+<script src="https://fb.me/react-dom-15.1.0.js"></script>
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+  <meta charset="utf-8">
+  <title>JS Bin</title>
+</head>
+<body>
+  <div id="container"></div>
+</body>
+</html>
+#+END_SRC
+**** js
+#+BEGIN_SRC js
+var TweetBox = React.createClass({
+    
+    // State
+    getInitialState: function() {
+        return {
+            text: "",
+            photoAdded: false
+        };
+    },
+    
+    // Event
+    handleChange: function(event) {
+        // console.log(event.target.value);
+        this.setState({ text: event.target.value });
+    },
+    togglePhoto: function(event) {
+        this.setState({ photoAdded: !this.state.photoAdded });
+    },
+
+    //
+    remainingCharacters: function() {
+        if (this.state.photoAdded) {
+            return 140 - 23 - this.state.text.length;
+        } else {
+            return 140 - this.state.text.length;
+        }
+    },
+
+    // Render
+    render: function() {
+        return (
+                <div className="well clearfix">
+                //
+                <textarea className="form-control"
+            onChange={this.handleChange}>
+                </textarea>
+                <br/>
+
+            // <span>{140 - this.state.text.length}</span>
+                <span>{ this.remainingCharacters() }</span>
+                // <button className="btn btn-primary pull-right" disabled>Tweet</button>
+                // <button className="btn btn-primary pull-right"
+            disabled={this.state.text.length === 0}>Tweet</button>
+                <button className="btn btn-primary pull-right"
+            disabled={this.state.text.length == 0 && !this.state.photoAdded}>Tweet</button>
+                <button className="btn btn-default pull-right" onClick={this.togglePhoto}>
+                {this.state.photoAdded ? "✓ Photo Added" : "Add Photo" }
+            </button>
+                
+            </div>
+        );
+    }
+});
+
+ReactDOM.render(
+        <TweetBox />,
+    document.getElementById("container")
+);
+#+END_SRC
+*** -----
+*** Model
+#+BEGIN_SRC lisp :tangle yes
+(defclass state ()
+  ((text :initarg :text
+         :initform ""
+         :accessor state-text)
+   (chars-remain :initarg :chars-remain
+                 :initform 140
+                 :reader state-chars-remain)
+   (ins :initarg :ins
+         :accessor state-ins)))
+
+(defmethod (setf state-text) :before (value (state state))
+  (setf (state-ins state)
+        (remove-if #'null
+                   (list
+                    (make-ins ".box .test"
+                              `("text" ,(concat "Test: " value)))
+                    (cond
+                      ((and (zerop (length (state-text state)))
+                            (plusp (length value)))
+                       (make-ins ".box .submit"
+                                 '("removeClass" "disabled")))
+                      ((zerop (length value))
+                       (make-ins ".box .submit"
+                                 '("addClass" "disabled"))))
+                    (make-ins ".box .chars-remain"
+                              `("text" ,(format nil "~D" (- (state-chars-remain state)
+                                                            (length value)))))))))
+#+END_SRC
+*** Data
+#+BEGIN_SRC lisp :tangle yes
+(defparameter *state* (make-instance 'state))
+#+END_SRC
+*** Operation
+#+BEGIN_SRC lisp :tangle yes
+;; Instruction
+(defun twitter-box-ins (msg)
+  (let* ((json (jojo:parse msg)))
+    (cond
+      ((getf json :|route|))
+      ((getf json :|act|)
+       (case-str (getf json :|act|)
+         ("text-change"
+          (progn
+            (setf (state-text *state*) (getf json :|val|))
+            (state-ins *state*)))
+         (t "")))
+      (t ""))))
+
+#+END_SRC
+*** COMMENT Router
+#+BEGIN_SRC lisp :tangle yes
+(defun movie-router (route)
+  (let ((mapper (make-mapper)))
+    (connect mapper "/" (->html (intro-htm)))
+    (connect mapper "/:id" (lambda (params)
+                             (->html (movie-item-htm (getf params :id)))))
+    (connect mapper "/:id/trailer" (lambda (params)
+                                     (->html (movie-trailer-htm (getf params :id)))))
+    (or (dispatch mapper route) "")))
+#+END_SRC
+*** Htm
+**** box
+#+BEGIN_SRC lisp :tangle yes
+(defun twitter-box-htm ()
+  `(div (:class "box")
+        (textarea (:class "text" :onkeyup "textChange(event)"))
+        (div (:class "tools")
+             (span (:class "spacing") "")
+             (span (:class "chars-remain") "140")
+             (button (:class "submit disabled") "Tweet"))
+        (div (:class "test") "Test")))
+
+#+END_SRC
+
+*** Css
+#+BEGIN_SRC lisp :tangle yes
+(defun twitter-box-css ()
+  '(".box" (:margin "auto 20px" :padding "10px 20px"
+            :display "flex" :flex-flow "column"
+            :box-shadow "0px 0px 1px 0px black")
+    (".text" (:height "80px" :padding "10px"
+                       :border-radius "5px"))
+    (".tools" (:display "flex" :align-items "center"
+               :padding "10px 0")
+     (".spacing" (:flex-grow "1"))
+     (".chars-remain" (:padding "10px"))
+     (".submit" (:width "60px" :padding "10px"
+                        :border-radius "5px"
+                        :background "#fff" :color "#a0a0a0"))
+     (".submit.disabled" (:background "#f0f0f0" :color "#cfcfcf"
+                                      :border "none")))))
+#+END_SRC
+*** Js
+#+BEGIN_SRC lisp :tangle yes
+(defun twitter-box-js ()
+  (ps* 
+   `(defun ws-twitter-box (ins)
+      (jq-ins ins))
+
+   `(defun text-change (e)
+      ;; (chain console (log e))
+      (var msg (chain |json|
+                 (stringify (create
+                             act "text-change"
+                             val (@ e target value)))))
+      (chain ws (send msg)))))
 #+END_SRC
