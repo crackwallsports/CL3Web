@@ -189,8 +189,8 @@
   ;; (send *ws* (to-json (list :msg "movie"
   ;;                           :ins (movie-ins msg))))
   ;; Twitter-box
-  (send *ws* (to-json (list :msg "twitter-box"
-                            :ins (twitter-box-ins msg)))))
+  (send *ws* (to-json (list :msg "tweet-box"
+                            :ins (tweet-box-ins msg)))))
 
 #+END_SRC
 ** -----
@@ -378,7 +378,7 @@
     `((div (:class "components")
            ;; ,(mobile-htm)
            ;; ,(movie-htm)
-           ,(twitter-box-htm)))
+           ,(tweet-box-htm)))
     :scripts
     `((script (:src "js/jquery-3.2.1.min.js"))
       (script () ,(index-js))))))
@@ -421,6 +421,9 @@
      ;; Disabled
      (".disabled" (:pointer-events "none"))
 
+     ;; Hidden
+     (".hidden" (:display "none !important"))
+     
      ;; Circle
      (".circle" (:border "1px solid"
                          :border-radius "50%"))
@@ -430,7 +433,7 @@
       ()
       ;; ,(mobile-css)
       ;; ,(movie-css)
-      ,(twitter-box-css)))))
+      ,(tweet-box-css)))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
@@ -450,7 +453,7 @@
                                 (var ins (@ json "INS"))
                                 (case (@ json "MSG")
                                   ("movie" (ws-movie json))
-                                  ("twitter-box" (ws-twitter-box json))
+                                  ("tweet-box" (ws-tweet-box json))
                                   (t ins))))
        (setf (@ ws onclose) (lambda (e)
                               (chain console (log "Connection closed")))))
@@ -468,7 +471,7 @@
     ;; (mobile-js)
     ;; (movie-js)
     )
-   (twitter-box-js)))
+   (tweet-box-js)))
 
 #+END_SRC
 ** -----
@@ -1198,9 +1201,12 @@ ReactDOM.render(
   ((text :initarg :text
          :initform ""
          :accessor state-text)
-   (chars-remain :initarg :chars-remain
+   (chars-limit :initarg :chars-limit
                  :initform 140
-                 :reader state-chars-remain)
+                 :reader state-chars-limit)
+   (medias :initarg :medias
+           :initform 0
+           :accessor state-medias)
    (ins :initarg :ins
          :accessor state-ins)))
 
@@ -1215,12 +1221,53 @@ ReactDOM.render(
                             (plusp (length value)))
                        (make-ins ".box .submit"
                                  '("removeClass" "disabled")))
-                      ((zerop (length value))
+                      ((and (zerop (state-medias state))
+                            (zerop (length value)))
                        (make-ins ".box .submit"
                                  '("addClass" "disabled"))))
                     (make-ins ".box .chars-remain"
-                              `("text" ,(format nil "~D" (- (state-chars-remain state)
-                                                            (length value)))))))))
+                              `("text" ,(format nil "~D" (len-chars-remain value))))))))
+
+(defun len-chars-remain (text)
+  (- (state-chars-limit *state*)
+     (length text)))
+
+(defmethod (setf state-medias) :before (value (state state))
+  (setf (state-ins state)
+        (remove-if #'null
+                   (let (res)
+                     (push (make-ins ".box .media-con"
+                                     `("html" ,(->html (show-media-htm value))))
+                           res)
+                     (cond
+                       ((and (zerop (state-medias state))
+                             (plusp value))
+                        (push (make-ins ".box .media-con"
+                                        '("removeClass" "hidden"))
+                              res)
+                        (push (make-ins ".box .submit"
+                                        '("removeClass" "disabled"))
+                              res))
+                       ((and (zerop value)
+                             (zerop (length (state-text state))))
+                        (push (make-ins ".box .media-con"
+                                        '("addClass" "hidden"))
+                              res)
+                        (push (make-ins ".box .submit"
+                                        '("addClass" "disabled"))
+                              res)))
+                     (nreverse res)))))
+
+(defun show-media-htm (medias)
+  `(div (:class "show-media" :onclick "removeMedia(event)")
+        ,@(let (res)
+            (dotimes (i medias)
+              (push `(div (:class "media")
+                          (img (:class "show" :src "#" :alt "🎆"))
+                          (span (:class "close") "❌"))
+                    res))
+            (nreverse res))))
+
 #+END_SRC
 *** Data
 #+BEGIN_SRC lisp :tangle yes
@@ -1229,7 +1276,7 @@ ReactDOM.render(
 *** Operation
 #+BEGIN_SRC lisp :tangle yes
 ;; Instruction
-(defun twitter-box-ins (msg)
+(defun tweet-box-ins (msg)
   (let* ((json (jojo:parse msg)))
     (cond
       ((getf json :|route|))
@@ -1238,6 +1285,14 @@ ReactDOM.render(
          ("text-change"
           (progn
             (setf (state-text *state*) (getf json :|val|))
+            (state-ins *state*)))
+         ("up-media"
+          (progn
+            (setf (state-medias *state*) (getf json :|val|))
+            (state-ins *state*)))
+         ("remove-media"
+          (progn
+            (decf (state-medias *state*))
             (state-ins *state*)))
          (t "")))
       (t ""))))
@@ -1257,40 +1312,113 @@ ReactDOM.render(
 *** Htm
 **** box
 #+BEGIN_SRC lisp :tangle yes
-(defun twitter-box-htm ()
-  `(div (:class "box")
-        (textarea (:class "text" :onkeyup "textChange(event)"))
-        (div (:class "tools")
-             (span (:class "spacing") "")
-             (span (:class "chars-remain") "140")
-             (button (:class "submit disabled") "Tweet"))
-        (div (:class "test") "Test")))
+(defun tweet-box-htm ()
+  (with-slots (text medias) *state*
+    `(div (:class "box")
+          (img (:class "user-img avatar" :scc "#" :alt "󠁺😁"))
+          (div (:class "content")
+               (textarea (:class "text" :onkeyup "textChange(event)")
+                         ,text)
+               ;; (div (:class "text" :contenteditable "true"
+               ;;              :onkeyup "textChange(event)")
+               ;;      ,text)
+               (div (:class ,(concat "media-con" (if (zerop medias)
+                                                    " hidden"
+                                                    "")))
+                    ,(show-media-htm medias))
+               (div (:class "tools")
+                    (input (:type "file" :name "up-media" :id "up-media"
+                                  :class "file-input"
+                                  :multiple ""
+                                  :accept "image/gif,image/jpeg,image/jpg,image/png,video/mp4,video/x-m4v"
+                                  :onchange "upMedia(event)"))
+                    (label (:for "up-media") "🌌")
+                    (span (:class "spacing") "")
+                    (span (:class "chars-remain")
+                          ,(format nil "~D" (len-chars-remain text)))
+                    (button (:class ,(concat "submit" (if (and (zerop medias)
+                                                               (zerop (length text))) " disabled" "")))
+                            "Tweet"))
+               (pre (:class "test")
+                    "Test:" ,text)))))
 
+;; (send *ws* (to-json (list :msg "twitter-box"
+       ;;                           :ins (list
+       ;;                                 (make-ins ".box .text"
+       ;;                                          `("val" "<a>abc</a>"))))))
+
+       ;; (defun remain-warning ()
+       ;;   (with-slots (text chars-limit) *state*
+       ;;     (let ((len (- chars-limit (length text))))
+       ;;       (if (minusp len)
+       ;;           (list (subseq text 0 139)
+       ;;                 `(span (:class "remain-warning")
+       ;;                        ,(subseq text 139)))
+       ;;           (list text)))))
 #+END_SRC
 
 *** Css
 #+BEGIN_SRC lisp :tangle yes
-(defun twitter-box-css ()
+(defun tweet-box-css ()
   '(".box" (:margin "auto 20px" :padding "10px 20px"
-            :display "flex" :flex-flow "column"
+            :display "flex"
             :box-shadow "0px 0px 1px 0px black")
-    (".text" (:height "80px" :padding "10px"
-                       :border-radius "5px"))
-    (".tools" (:display "flex" :align-items "center"
-               :padding "10px 0")
-     (".spacing" (:flex-grow "1"))
-     (".chars-remain" (:padding "10px"))
-     (".submit" (:width "60px" :padding "10px"
-                        :border-radius "5px"
-                        :background "#fff" :color "#a0a0a0"))
-     (".submit.disabled" (:background "#f0f0f0" :color "#cfcfcf"
-                                      :border "none")))))
+    ;; User-Image
+    (".avatar" (:background "white"
+                :border-radius "50%"
+                :font-size "30px" :text-align "center"
+                :width "40px" :height "40px"
+                :padding "3px 0" :margin-right "5px"))
+
+    ;; Content
+    (".content" (:display "flex" :flex-flow "column" :flex-grow "1")
+     (".text" (:min-height "80px" :max-height "300px"
+                           :word-wrap "break-word"
+                           :overflow "scroll"
+                           :padding "10px"
+                           :border "1px solid" :border-radius "5px"
+                           :background "white"
+                           :resize "none")
+      ;; (".remain-warning" (:background "#f1bbab"))
+      )
+
+     ;; Media
+     (".media-con" (:display "flex" :align-items "center"
+                             ;; :height "100px"
+                             :margin-top "-10px" :padding-top "10px"
+                             :border "1px solid" :border-radius "6px")
+      (".show-media" (:padding "10px" :width "100%"
+                               :display "flex" :flex-wrap "wrap"))
+      (".media" (:font-size "60px" :width "60px"
+                            :position "relative"
+                            :margin "0 10px"))
+      (".close" (:font-size "10px" :width "20px" :height "20px"
+                            :position "absolute" :right "-8px" :top "-5px"
+                            :padding "2px 0 0 4px"))
+      (".close:hover" (:cursor "pointer")))
+
+     ;; Tools
+     (".tools" (:display "flex" :align-items "center"
+                         :padding "10px 0")
+      (".file-input" (:width "0.1px" :height "0.1px" :position "absolute"
+                             :overflow "hidden" :opacity "0"
+                             :z-index "-1"))
+      (".file-input + label" (:font-size "2.5em"))
+      (".file-input + label:hover" (:cursor "pointer" ))
+      (".spacing" (:flex-grow "1"))
+      (".chars-remain" (:padding "10px"))
+      (".submit" (:width "60px" :padding "10px"
+                         :border-radius "5px"
+                         :background "#fff" :color "#a0a0a0"))
+      (".submit:hover" (:cursor "pointer"))
+      (".submit.disabled" (:background "#f0f0f0" :color "#cfcfcf"
+                                       :border "none"))))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
-(defun twitter-box-js ()
+(defun tweet-box-js ()
   (ps* 
-   `(defun ws-twitter-box (ins)
+   `(defun ws-tweet-box (ins)
       (jq-ins ins))
 
    `(defun text-change (e)
@@ -1299,5 +1427,22 @@ ReactDOM.render(
                  (stringify (create
                              act "text-change"
                              val (@ e target value)))))
-      (chain ws (send msg)))))
+      (chain ws (send msg)))
+   
+   `(defun up-media (e)
+      ;; (chain console (log e))
+      (var msg (chain |json|
+                 (stringify (create
+                             act "up-media"
+                             val (@ e target files length)))))
+      (chain ws (send msg)))
+
+   `(defun remove-media (e)
+      (var obj (@ e target))
+      (when (chain ($ obj) (has-class "close"))
+        (var msg (chain |json|
+                   (stringify (create
+                               act "remove-media"
+                               val ""))))
+        (chain ws (send msg))))))
 #+END_SRC
