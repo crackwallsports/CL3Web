@@ -30,13 +30,6 @@
 (load "components")
 (com:start :port 3000)
 (com:stop)
-
-(in-package :com)
-(defun re-com ()
-  (if *handler*
-      (stop))
-  (load "components")
-  (start :port 3000))
 #+END_SRC
 * Base
 ** Package
@@ -137,6 +130,25 @@
     (setf *ws* nil)))
 
 #+END_SRC
+** Helper
+*** Restart
+#+BEGIN_SRC lisp :tangle yes
+(defun re-com ()
+  (if *handler*
+      (stop))
+  (load "components")
+  (start :port 3000))
+#+END_SRC
+*** Date
+#+BEGIN_SRC lisp :tangle yes
+(defun human-date (date)
+  (and date
+       (multiple-value-bind
+             (second minute hour day month year)
+           (decode-universal-time date)
+         (format nil "~4D.~2,'0D.~2,'0D ~2,'0D:~2,'0D:~2,'0D"
+                 year month day hour minute second))))
+#+END_SRC
 * Arc
 * COMMENT Model
 ** Helper
@@ -189,8 +201,12 @@
   ;; (send *ws* (to-json (list :msg "movie"
   ;;                           :ins (movie-ins msg))))
   ;; Twitter-box
-  (send *ws* (to-json (list :msg "tweet-box"
-                            :ins (tweet-box-ins msg)))))
+  ;; (send *ws* (to-json (list :msg "tweet-box"
+  ;;                           :ins (tweet-box-ins msg))))
+  ;; Vue?
+  ;; (send *ws* (to-json (list :msg "vue"
+  ;;                           :ins (vue-ins msg))))
+  (dispatcher msg))
 
 #+END_SRC
 ** -----
@@ -378,7 +394,8 @@
     `((div (:class "components")
            ;; ,(mobile-htm)
            ;; ,(movie-htm)
-           ,(tweet-box-htm)))
+           ;; ,(tweet-box-htm)
+           ,(vue-htm)))
     :scripts
     `((script (:src "js/jquery-3.2.1.min.js"))
       (script () ,(index-js))))))
@@ -433,7 +450,9 @@
       ()
       ;; ,(mobile-css)
       ;; ,(movie-css)
-      ,(tweet-box-css)))))
+      ;; ,(tweet-box-css)
+      ,(vue-css)
+      ))))
 #+END_SRC
 *** Js
 #+BEGIN_SRC lisp :tangle yes
@@ -450,11 +469,13 @@
        (setf (@ ws onmessage) (lambda (e)
                                 ;; (chain console (log (+ "Mes: " (@ json "MSG"))))
                                 (var json (chain |json| (parse (@ e data))))
-                                (var ins (@ json "INS"))
-                                (case (@ json "MSG")
-                                  ("movie" (ws-movie json))
-                                  ("tweet-box" (ws-tweet-box json))
-                                  (t ins))))
+                                (jq-ins json)
+                                ;; (var ins (@ json "INS"))
+                                ;; (case (@ json "MSG")
+                                ;;   ("movie" (ws-movie json))
+                                ;;   ("tweet-box" (ws-tweet-box json))
+                                ;;   (t ins))
+                                ))
        (setf (@ ws onclose) (lambda (e)
                               (chain console (log "Connection closed")))))
     `(defun ws-router (route)
@@ -471,7 +492,8 @@
     ;; (mobile-js)
     ;; (movie-js)
     )
-   (tweet-box-js)))
+   ;; (tweet-box-js)
+   (vue-js)))
 
 #+END_SRC
 ** -----
@@ -1085,7 +1107,7 @@ const router = new VueRouter({
      (jq-ins ins)))
 
 #+END_SRC
-** Tweet Box
+** COMMENT Tweet Box
 *** jQuery
 **** htm
 #+BEGIN_SRC html
@@ -1446,3 +1468,366 @@ ReactDOM.render(
                                val ""))))
         (chain ws (send msg))))))
 #+END_SRC
+** Learning Vue
+- [[https://cn.vuejs.org/v2/guide/index.html#%E5%A3%B0%E6%98%8E%E5%BC%8F%E6%B8%B2%E6%9F%93][Vue.js 文档]]
+*** 介绍
+**** 声明式渲染
+#+BEGIN_SRC lisp
+;; App
+(let ((message "Hello Vue!"))
+  (defun vue-htm ()
+    `(div (:id "app") ,message)))
+;; OR
+(defparameter *message* "Hello Vue!")
+(defun vue-htm ()
+  `(div (:id "app") ,*message*))
+
+;; App-2
+(let ((message (concat "页面加载于 " (human-date (get-universal-time)))))
+  (defun vue-htm ()
+    `(div (:id "app-2")
+          ;; v-bind:title="message"  ?? change message -> title
+          (span (:title ,message)))))
+
+#+END_SRC
+**** 条件与循环
+#+BEGIN_SRC lisp
+;; App-3
+(let ((seen t))
+  (defun vue-htm ()
+    `(div (:id "app-3")
+          ;; v-if="seen"
+          ,(if seen
+               '(p () "现在你看到我了")))))
+
+;; App-4
+(let ((todos ((:text "学习 JavaScript")
+              (:text "学习 Vue")
+              (:text "整个牛项目"))))
+  (defun vue-htm ()
+    `(div (:id "app-4")
+          (ol ()
+              ;; v-for="todo in todos"
+              ,@(loop for todo in todos
+                   collect `(li () (getf todo :text)))))))
+
+#+END_SRC
+**** 处理用户输入
+#+BEGIN_SRC lisp
+;; App-5
+(defun vue-htm ()
+  (with-slots (message) *state*
+    `(div (:id "app-5")
+          (p () ,message)
+          ;; v-on:click="reverseMessage"
+          (button (:onclick "reverseMessage()") "逆转消息"))))
+
+(defun vue-js ()
+  (ps*
+   `(defun reverse-message ()
+      (var msg (chain |json|
+                 (stringify (create
+                             act "reverse-message"
+                             val ""))))
+      (chain ws (send msg)))))
+
+
+;; WebSocket
+;; ...
+(defun ws->router (msg)
+  ;; Vue
+  (send *ws* (to-json (list :msg "vue"
+                            :ins (vue-ins msg)))))
+;; State
+(defclass state ()
+  ((message :initform "Hello Vue.js!"
+            :accessor state-message)
+   (ins :initarg :ins
+        :accessor state-ins)))
+
+(defmethod (setf state-message) :before (value (state state))
+  (setf (state-ins state)
+        (nconc (state-ins state)
+               (remove-if #'null
+                          (list
+                           (make-ins "#app-5 .p"
+                                     `("text" ,value)))))))
+
+(defparameter *state* (make-instance 'state))
+
+(defun reverse-message ()
+  (setf (state-message *state*) (reverse (state-message *state*))))
+
+(defun vue-ins (msg)
+  (let* ((json (jojo:parse msg)))
+    (cond
+      ((getf json :|route|))
+      ((getf json :|act|)
+       (case-str (getf json :|act|)
+         ("reverse-message"
+          (progn
+            (reverse-message)
+            (state-ins *state*)))
+         (t "")))
+      (t ""))))
+
+
+;; App-6
+(defun vue-htm ()
+  (with-slots (message) *state*
+    `(div (:id "app-6")
+          (p () ,message)
+          ;; v-model="message"
+          (input (:onchange "input-change()")))))
+;; 双向绑定 需要类似 App-5 的过程
+#+END_SRC
+**** 组件化应用构建
+#+BEGIN_SRC lisp
+;; App-7
+(let ((grocery-list ((:id 0 :text "蔬菜")
+                     (:id 1 :text "奶酪")
+                     (:id 2 :text "随便其他什么人吃的东西"))))
+  (defun vue-htm ()
+    `(div (:id "app-7")
+          (ol ()
+              ,@(loop for item in grocery-list
+                   collect (todo-item-htm item))))))
+
+(defun todo-item-htm (todo)
+  `(li () ,(getf todo :text)))
+
+#+END_SRC
+*** Class 与 Style 绑定
+**** 绑定Class 对象和数组 语法
+#+BEGIN_SRC lisp
+;; <div class="static"
+;;     v-bind:class="{ active: isActive, 'text-danger': hasError }">
+;; </div>
+
+`(div (,(join-class "static"
+                    (<-data-class "div .static"
+                                  ('is-active "active")
+                                  ('has-error "text-danger")
+                                  ;; OR
+                                  'class-obj
+                                  ;; OR
+                                  'active-class
+                                  'error-class))))
+;; ?? "div" 定位
+
+;; Ins
+(if is-active "addClass" "removeClass")
+
+;; class-obj = ('is-active "active" 'has-error "text-danger")
+;; active-class = "active"
+;; error-class = "text-danger"
+
+;; ?? 计算属性
+;;-| computed: {
+;;-|   classObject: function () {
+;;-|     return {
+;;-|       active: this.isActive && !this.error,
+;;-|       'text-danger': this.error && this.error.type === 'fatal'
+;;-|     }
+;;-|   }
+;;-| }
+
+;; <div v-bind:class="[activeClass, errorClass]"></div>
+`(div (,(join-class "somdiv"
+                    (<-data-class ".somdiv"
+                                  ))))
+#+END_SRC
+
+**** 绑定Class 对象和数组 语法
+#+BEGIN_SRC lisp
+;; <div v-bind:style="{ color: activeColor, fontSize: fontSize + 'px' }"></div>
+;; <div v-bind:style="styleObject"></div>
+;;-| styleObject: { color: 'red', fontSize: '13px' }
+
+`(div (:class "static"
+              :style ,(<-data-style "div .static"
+                                   ("color" 'active-color)
+                                   ("fontSize" 'font-size (lambda (val)
+                                                            (convat val "px")))
+                                   ;; OR
+                                   'style-obj)))
+
+;; <div :style="{ display: ['-webkit-box', '-ms-flexbox', 'flex'] }"></div>
+
+`(div (:class "static"
+              :style ,(css-x-browser "display" "flex"
+                                     (list (bs-current-browser)))))
+
+#+END_SRC
+*** 组件
+**** data 必须是函数
+#+BEGIN_SRC lisp
+(defun my-component ()
+  (let ((message "hello"))
+    `(span () ,message)))
+
+(let ((counter (make-instance 'state :name 'counter :val 0)))
+  (defun simple-counter ()
+    `(button (:onclick ,(data-> "button" counter #'incf)) ,counter)))
+
+
+(defun simple-counter ()
+  (let ((counter (make-state 'counter 0)))
+    `(button (:onclick ,(data-> "button" counter #'incf)) ,counter)))
+#+END_SRC
+**** 组合组件
+#+BEGIN_SRC lisp
+(defun child (message)
+  `(span () ,message))
+
+(defun child (message)
+  `(span (:id "span-x") (<-data "span-x" message)))
+
+(defun htm ()
+  `(div ()
+        (input (:onkeyup ,(data-> "input" parent-msg)))
+        ,(child panrent-msg)))
+
+
+#+END_SRC
+**** 自定义事件
+#+BEGIN_SRC lisp
+(let ((value (make-instance 'state :name 'value :val 0.0)))
+  (defun currency-input ()
+    `(span ()
+           (input (:id "input-x"
+                       :onkeyup ,(data-> "input" value)
+                       :value ,(<-data-val "input-x" value
+                                           (lambda (val)
+                                             (format nil "~,2F" val))))))))
+#+END_SRC
+*** -----
+*** Binding ?
+#+BEGIN_SRC js
+<div id="app">
+    <input type="text" v-model="word">
+    <p>{{word}}</p>
+</div>
+<script>
+var vm = new Vue({
+    el: '#app',
+        data: {
+            word: 'Hello World!'
+        }
+    });
+</script>
+
+#+END_SRC
+- View => Event => Action -WebSocket-> Dispatcher => Ins -WebSocket-> View
+- Bind
+  - <-data Tag State Process
+  - data-> Type State Tag Preprocess
+#+BEGIN_SRC lisp :tangle yes
+
+;; All Data
+(defparameter *states* (make-hash-table :test #'equal))
+
+;; State : name val
+(defclass state ()
+  ((name :initarg :name
+         :reader state-name)
+   (val :initarg :val
+        :accessor state-val)
+   ;; Observer
+   (obs :initform (make-hash-table :test #'equal))
+   ;; Preprocess
+   (prep :initform (make-hash-table :test #'equal))))
+
+(defun make-state (name &optional val)
+  (make-instance 'state :name name :val val))
+
+(defmethod (setf state-val) (value (state state))
+  (unless (equal value (slot-value state 'val))
+    (setf (slot-value state 'val) value)
+    (maphash (lambda (k v)
+               (funcall v value))
+             (slot-value state 'obs))))
+
+(defmethod add-observer ((state state) tag process)
+  (setf (gethash tag (slot-value state 'obs)) process))
+(defmethod rem-observer ((state state) tag)
+  (remhash tag (slot-value state 'obs)))
+
+(defmethod add-preprocess ((state state) tag preprocess)
+  (setf (gethash tag (slot-value state 'prep)) preprocess))
+(defmethod rem-preprocess ((state state) tag)
+  (remhash tag (slot-value state 'prep)))
+(defmethod preprocess ((state state) tag)
+  (funcall (gethash tag (slot-value state 'prep))))
+
+;; 
+(defun dispatcher (msg)
+  (let* ((json (jojo:parse msg)))
+    (cond
+      ((getf json :|route|))
+      ((getf json :|act|)
+       (case-str (getf json :|act|)
+         ("input-change"
+          (progn
+            (let ((stat (gethash (getf json :|stat|) *states*))
+                  (nval (getf json :|val|))
+                  (tag (getf json :|tag|)))
+              (when stat
+                (if tag
+                    (setf nval (preprocess stat tag)))
+                (setf (state-val stat) nval )))))
+         (t "")))
+      (t))))
+
+(defun send-ins (ins)
+  (send *ws* (to-json (list :msg "vue"
+                            :ins ins))))
+
+(defun data-> (type state &optional tag preprocess)
+  (case-str type
+    ("input" (progn
+               (if (and tag preprocess)
+                   (progn 
+                     (add-preprocess state tag preprocess)
+                     (concat "inputChange(this, '" (state-name state) "', '" tag "')"))
+                   (concat "inputChange(this, '" (state-name state) "')"))))))
+
+(defun <-data (tag state &optional process)
+  (let ((val (state-val state)))
+    (if process
+        (setf val (funcall process (state-val state))))
+    (add-observer state
+                  tag
+                  (lambda (val)
+                    (send-ins (list (make-ins tag `("text" ,val))))))
+    val))
+
+(defun vue-js ()
+  (ps*
+   `(defun input-change (obj stat tag)
+      (var msg (chain |json|
+                 (stringify (create
+                             act "input-change"
+                             stat stat
+                             tag tag
+                             val (chain ($ obj) (val))))))
+      (chain ws (send msg)))))
+
+
+;; View
+(setf (gethash "word" *states*) (make-state "word" "hello World!"))
+
+(defun vue-htm ()
+  (let ((word (gethash "word" *states*)))
+    `(div (:id "app")
+          (input (:type "text" :id "input-word" 
+                        :onkeyup ,(data-> "input" word)))
+          (p () ,(<-data "#app p" word)))))
+
+
+(defun vue-css () "")
+
+
+#+END_SRC
+
+
