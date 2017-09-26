@@ -1474,127 +1474,104 @@ ReactDOM.render(
 **** 声明式渲染
 #+BEGIN_SRC lisp
 ;; App
-(let ((message "Hello Vue!"))
-  (defun vue-htm ()
-    `(div (:id "app") ,message)))
-;; OR
-(defparameter *message* "Hello Vue!")
+(add-state "message" "Hello Vue!")
 (defun vue-htm ()
-  `(div (:id "app") ,*message*))
+  (let ((message (get-state "message")))
+    `(div (:id "app") ,(<-data "#app" message))))
 
 ;; App-2
-(let ((message (concat "页面加载于 " (human-date (get-universal-time)))))
-  (defun vue-htm ()
-    `(div (:id "app-2")
-          ;; v-bind:title="message"  ?? change message -> title
-          (span (:title ,message)))))
+;; 此处不需要绑定 title值在加载时确定 之后不需更改
+(defun vue-htm ()
+  `(div (:id "app-2")
+        (span (:title ,(concat "页面加载于 "
+                               (human-date (get-universal-time)))))))
 
 #+END_SRC
 **** 条件与循环
 #+BEGIN_SRC lisp
 ;; App-3
-(let ((seen t))
-  (defun vue-htm ()
+(add-state "seen" t)
+
+(defun vue-htm ()
+  (let ((seen (get-state "seen")))
     `(div (:id "app-3")
           ;; v-if="seen"
-          ,(if seen
-               '(p () "现在你看到我了")))))
+          ,(<-data-if "#app-3" seen
+                      '(p () "现在你看到我了")))))
+
 
 ;; App-4
-(let ((todos ((:text "学习 JavaScript")
-              (:text "学习 Vue")
-              (:text "整个牛项目"))))
-  (defun vue-htm ()
-    `(div (:id "app-4")
+(add-state "todos" '((:text "学习 JavaScript")
+                     (:text "学习 Vue")
+                     (:text "整个牛项目")))
+;; ?? todos = (defclass list-state (state))
+;; ?? todo = (defclass plist-state (state))
+
+(add-state "todos"
+           (list (make-state "todo-0" "学习 JavaScript")
+                 (make-state "todo-1" "学习 Vue")
+                 (make-state "todo-2" "整个牛项目")))
+(defun vue-htm ()
+  (let ((todos (get-state "todos")))
+    `(div (:id "app-3")
           (ol ()
               ;; v-for="todo in todos"
-              ,@(loop for todo in todos
-                   collect `(li () (getf todo :text)))))))
+              ,@(<-data "#app-3 ol" todos
+                        (lambda (val)
+                          (loop for todo in val
+                             collect (let ((id (format nil "~A" (random 100000))))
+                                       `(li (:id ,id)
+                                            ,(<-data (concat "#" id)  todo))))))))))
 
+;; ?? push todos
 #+END_SRC
 **** 处理用户输入
 #+BEGIN_SRC lisp
 ;; App-5
+(add-state "message" "Hello Vue.js!")
 (defun vue-htm ()
-  (with-slots (message) *state*
+  (let ((message (get-state "message")))
     `(div (:id "app-5")
-          (p () ,message)
+          (p () ,(<-data "#app-5 p" message))
           ;; v-on:click="reverseMessage"
-          (button (:onclick "reverseMessage()") "逆转消息"))))
-
-(defun vue-js ()
-  (ps*
-   `(defun reverse-message ()
-      (var msg (chain |json|
-                 (stringify (create
-                             act "reverse-message"
-                             val ""))))
-      (chain ws (send msg)))))
-
-
-;; WebSocket
-;; ...
-(defun ws->router (msg)
-  ;; Vue
-  (send *ws* (to-json (list :msg "vue"
-                            :ins (vue-ins msg)))))
-;; State
-(defclass state ()
-  ((message :initform "Hello Vue.js!"
-            :accessor state-message)
-   (ins :initarg :ins
-        :accessor state-ins)))
-
-(defmethod (setf state-message) :before (value (state state))
-  (setf (state-ins state)
-        (nconc (state-ins state)
-               (remove-if #'null
-                          (list
-                           (make-ins "#app-5 .p"
-                                     `("text" ,value)))))))
-
-(defparameter *state* (make-instance 'state))
-
-(defun reverse-message ()
-  (setf (state-message *state*) (reverse (state-message *state*))))
-
-(defun vue-ins (msg)
-  (let* ((json (jojo:parse msg)))
-    (cond
-      ((getf json :|route|))
-      ((getf json :|act|)
-       (case-str (getf json :|act|)
-         ("reverse-message"
-          (progn
-            (reverse-message)
-            (state-ins *state*)))
-         (t "")))
-      (t ""))))
+          (button (:onclick ,(data-> "click" message "#app-5 button"
+                                     (lambda (val)
+                                       (reverse val))))
+                  "逆转消息"))))
 
 
 ;; App-6
+(add-state "message" "hello Vue!")
 (defun vue-htm ()
-  (with-slots (message) *state*
+  (let ((message (gethash "message" *states*)))
     `(div (:id "app-6")
-          (p () ,message)
-          ;; v-model="message"
-          (input (:onchange "input-change()")))))
-;; 双向绑定 需要类似 App-5 的过程
+          (input (:type "text" :id "input-word" 
+                        :onkeyup ,(data-> "input" message)))
+          (p () ,(<-data "#app-6 p" message)))))
 #+END_SRC
 **** 组件化应用构建
 #+BEGIN_SRC lisp
 ;; App-7
-(let ((grocery-list ((:id 0 :text "蔬菜")
-                     (:id 1 :text "奶酪")
-                     (:id 2 :text "随便其他什么人吃的东西"))))
-  (defun vue-htm ()
-    `(div (:id "app-7")
-          (ol ()
-              ,@(loop for item in grocery-list
-                   collect (todo-item-htm item))))))
+(add-state "grocery-list"
+           (list (make-state "0" '(:id 0 :text "蔬菜"))
+                 (make-state "1" '(:id 1 :text "奶酪"))
+                 (make-state "2" '(:id 2 :text "随便其他什么人吃的东西"))))
 
 (defun todo-item-htm (todo)
-  `(li () ,(getf todo :text)))
+  (let ((id (format nil "~A" (random 100000))))
+    `(li (:id ,id)
+         ,(<-data (concat "#" id)  todo
+                  (lambda (val)
+                    (getf val :text))))))
+
+(defun vue-htm ()
+  (let ((grocery-list (get-state "grocery-list")))
+    `(div (:id "app-7")
+          (ol ()
+              ,@(<-data "#app-7 ol" grocery-list
+                        (lambda (val)
+                          (loop for todo in val
+                             collect (todo-item-htm todo))))))))
 
 #+END_SRC
 *** Class 与 Style 绑定
@@ -1703,27 +1680,23 @@ ReactDOM.render(
 #+END_SRC
 *** -----
 *** Binding ?
-#+BEGIN_SRC js
-<div id="app">
-    <input type="text" v-model="word">
-    <p>{{word}}</p>
-</div>
-<script>
-var vm = new Vue({
-    el: '#app',
-        data: {
-            word: 'Hello World!'
-        }
-    });
-</script>
-
-#+END_SRC
 - View => Event => Action -WebSocket-> Dispatcher => Ins -WebSocket-> View
 - Bind
   - <-data Tag State Process
   - data-> Type State Tag Preprocess
-#+BEGIN_SRC lisp :tangle yes
 
+**** Base
+#+BEGIN_SRC lisp :tangle yes
+;; Ins
+(defun send-ins (ins)
+  (send *ws* (to-json (list :msg "vue"
+                            :ins ins))))
+
+;; Css
+(defun vue-css () "")
+#+END_SRC
+**** State
+#+BEGIN_SRC lisp :tangle yes
 ;; All Data
 (defparameter *states* (make-hash-table :test #'equal))
 
@@ -1757,10 +1730,24 @@ var vm = new Vue({
   (setf (gethash tag (slot-value state 'prep)) preprocess))
 (defmethod rem-preprocess ((state state) tag)
   (remhash tag (slot-value state 'prep)))
-(defmethod preprocess ((state state) tag)
-  (funcall (gethash tag (slot-value state 'prep))))
+(defmethod preprocess ((state state) tag val)
+  (funcall (gethash tag (slot-value state 'prep)) val))
 
-;; 
+;; Operation
+(defun add-state (name val)
+  (setf (gethash name *states*) (make-state name val)))
+(defun get-state (name)
+  (gethash name *states*))
+(defun change-state (name new-val)
+  (setf (state-val (get-state name)) new-val))
+
+#+END_SRC
+
+**** Dispatcher
+#+BEGIN_SRC lisp :tangle yes
+;; Dispatcher
+
+;; Backend
 (defun dispatcher (msg)
   (let* ((json (jojo:parse msg)))
     (cond
@@ -1774,34 +1761,19 @@ var vm = new Vue({
                   (tag (getf json :|tag|)))
               (when stat
                 (if tag
-                    (setf nval (preprocess stat tag)))
+                    (setf nval (preprocess stat tag nval)))
                 (setf (state-val stat) nval )))))
+         ("click"
+          (progn
+            (let ((stat (gethash (getf json :|stat|) *states*))
+                  (tag (getf json :|tag|)))
+              (and stat tag
+                   (setf (state-val stat) (preprocess stat tag (state-val stat)))))))
          (t "")))
       (t))))
 
-(defun send-ins (ins)
-  (send *ws* (to-json (list :msg "vue"
-                            :ins ins))))
 
-(defun data-> (type state &optional tag preprocess)
-  (case-str type
-    ("input" (progn
-               (if (and tag preprocess)
-                   (progn 
-                     (add-preprocess state tag preprocess)
-                     (concat "inputChange(this, '" (state-name state) "', '" tag "')"))
-                   (concat "inputChange(this, '" (state-name state) "')"))))))
-
-(defun <-data (tag state &optional process)
-  (let ((val (state-val state)))
-    (if process
-        (setf val (funcall process (state-val state))))
-    (add-observer state
-                  tag
-                  (lambda (val)
-                    (send-ins (list (make-ins tag `("text" ,val))))))
-    val))
-
+;; Front-end
 (defun vue-js ()
   (ps*
    `(defun input-change (obj stat tag)
@@ -1811,23 +1783,128 @@ var vm = new Vue({
                              stat stat
                              tag tag
                              val (chain ($ obj) (val))))))
+      (chain ws (send msg)))
+   `(defun some-click (stat tag)
+      (var msg (chain |json|
+                 (stringify (create
+                             act "click"
+                             stat stat
+                             tag tag))))
       (chain ws (send msg)))))
+#+END_SRC
 
+**** Binding 
+#+BEGIN_SRC lisp :tangle yes
+;; View -> Model
+(defun data-> (type state &optional tag preprocess)
+  (case-str type
+    ("input" (progn
+               (if (and tag preprocess)
+                   (progn 
+                     (add-preprocess state tag preprocess)
+                     (concat "inputChange(this, '" (state-name state) "', '" tag "')"))
+                   (concat "inputChange(this, '" (state-name state) "')"))))
+    ("click" (progn
+               (if (and tag preprocess)
+                   (progn 
+                     (add-preprocess state tag preprocess)
+                     (concat "someClick('" (state-name state) "', '" tag "')"))
+                   "")))))
 
-;; View
-(setf (gethash "word" *states*) (make-state "word" "hello World!"))
+;; Model -> View
+(defun <-data (tag state &optional process)
+  (let ((val (state-val state)))
+    (if process
+        (setf val (funcall process (state-val state))))
+    (add-observer
+     state
+     tag
+     (lambda (val)
+       (send-ins (list
+                  (make-ins tag
+                            `("html" ,(->html (if process
+                                                  (funcall process val)
+                                                  val))))))))
+    val))
 
+(defun <-data-if (tag state t-exp &optional f-exp)
+  (let ((val (state-val state)))
+    (add-observer
+     state
+     tag
+     (lambda (val)
+       (let ((res f-exp))
+         (if val (setf res t-exp))
+         (send-ins (list (make-ins tag `("html" ,(->html res))))))))
+    (if val t-exp f-exp)))
+#+END_SRC
+**** Binding Ex.
+***** COMMENT if
+#+BEGIN_SRC lisp :tangle yes
+;; if binding
+(add-state "seen" t)
+(defun vue-htm ()
+  (let ((seen (get-state "seen")))
+    `(div (:id "app")
+          ,(<-data-if "#app" seen 
+                      `(p () "现在你看到我了吗?")))))
+
+(change-state "seen" (not (state-val (get-state "seen"))))
+
+#+END_SRC
+***** COMMENT for
+#+BEGIN_SRC lisp :tangle yes
+;; for binding
+(add-state "todos" (list (make-state "todo-0" "学习 JavaScript")
+                         (make-state "todo-1" "学习 Vue")
+                         (make-state "todo-2" "整个牛项目")))
+(defun vue-htm ()
+  (let ((todos (get-state "todos")))
+    `(div (:id "app-3")
+          (ol ()
+              ;; v-for="todo in todos"
+              ,@(<-data "#app-3 ol" todos
+                        (lambda (val)
+                          (loop for todo in val
+                             collect (let ((id (format nil "~A" (random 100000))))
+                                       `(li (:id ,id)
+                                            ,(<-data (concat "#" id)  todo))))))))))
+
+(let ((todo (second (state-val (get-state "todos")))))
+  (setf (state-val todo) "学习 Common lisp"))
+
+(change-state "todos" (list (make-state "todo-0" "不要学习 不学习")
+                            (make-state "todo-1" "不要学习 学习")
+                            (make-state "todo-2" "不要 整个牛 项目")))
+(vue-htm)
+
+#+END_SRC
+***** COMMENT input
+#+BEGIN_SRC lisp
+;; input binding
+(add-state "word" "hello")
 (defun vue-htm ()
   (let ((word (gethash "word" *states*)))
     `(div (:id "app")
           (input (:type "text" :id "input-word" 
                         :onkeyup ,(data-> "input" word)))
           (p () ,(<-data "#app p" word)))))
+  #+END_SRC
+***** 
+***** click
+#+BEGIN_SRC lisp
+;; click binding
+(add-state "message" "Hello Vue.js!")
+(defun vue-htm ()
+  (let ((message (get-state "message")))
+    `(div (:id "app-5")
+          (p () ,(<-data "#app-5 p" message))
+          ;; v-on:click="reverseMessage"
+          (button (:onclick ,(data-> "click" message "#app-5 button"
+                                     (lambda (val)
+                                       (reverse val))))
+                  "逆转消息"))))
 
 
-(defun vue-css () "")
-
-
-#+END_SRC
-
+  #+END_SRC
 
