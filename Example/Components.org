@@ -1611,11 +1611,11 @@ ReactDOM.render(
     `(div (:id "app")
           ,(<-data "#app" full-name))))
 
-(change-state "first-name" "天已")
-(change-state "second-name" "明")
+(change-state "first-name" "天")
+(change-state "second-name" "明明")
 ;; (change-state "full-name" "游 天明")
 
-;;=> computed ? 未实现
+;;=> computed
 (defun vue-htm ()
   (let ((first-name (get-state "first-name"))
         (second-name (get-state "second-name")))
@@ -1628,6 +1628,14 @@ ReactDOM.render(
 
 (defun get-full-name (name1 name2)
   (concat name1 " " name2))
+
+;; setter
+(defun set-full-name (full-name)
+  (destructuring-bind (name1 name2) (split " " full-name)
+    (setf (slot-value (get-state "first-name") 'val) name1)
+    (change-state "second-name" name2)))
+
+(set-full-name "无敌 量贩")
 #+END_SRC
 *** Class 与 Style 绑定
 **** 绑定Class 对象和数组 语法
@@ -1881,6 +1889,21 @@ ReactDOM.render(
                                                   (funcall process val)
                                                   val))))))))
     val))
+
+(defun <-mutli-data (tag states process)
+  (apply process
+         (loop for state in states
+            do (add-observer
+                state
+                tag
+                (lambda (val)
+                  (declare (ignore val))
+                  (send-ins (list
+                             (make-ins tag
+                                       `("html" ,(->html (apply process
+                                                                (loop for state in states
+                                                                   collect (state-val state))))))))))
+            collect (state-val state))))
 
 (defun <-data-if (tag state t-exp &optional f-exp)
   (let ((val (state-val state)))
