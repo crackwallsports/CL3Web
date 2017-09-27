@@ -1574,6 +1574,61 @@ ReactDOM.render(
                              collect (todo-item-htm todo))))))))
 
 #+END_SRC
+*** 计算属性和观察者
+#+BEGIN_SRC lisp
+;; computed
+(add-state "message" "Hello")
+(defun vue-htm ()
+  (let ((message (get-state "message")))
+    `(div (:id "app")
+          (p () ,(<-data "#app :nth-child(1)" message
+                         (lambda (val)
+                           (concat "Original message: " val))))
+          (p () ,(<-data "#app :nth-child(2)" message
+                         (lambda (val)
+                           (concat "Computed reversed message: "
+                                   (reverse val))))))))
+
+(change-state "message" "New hello")
+
+;; watch
+(add-state "first-name" "Foo")
+(add-state "second-name" "Bar")
+(add-state "full-name" "Foo Bar")
+(defun get-full-name (val)
+  (change-state "full-name"
+                (concat
+                 (state-val (get-state "first-name"))
+                 " "
+                 (state-val (get-state "second-name")))))
+(add-observer (get-state "first-name") "full-name"
+              #'get-full-name)
+(add-observer (get-state "second-name") "full-name"
+              #'get-full-name)
+(state-val (get-state "full-name"))
+(defun vue-htm ()
+  (let ((full-name (get-state "full-name")))
+    `(div (:id "app")
+          ,(<-data "#app" full-name))))
+
+(change-state "first-name" "天已")
+(change-state "second-name" "明")
+;; (change-state "full-name" "游 天明")
+
+;;=> computed ? 未实现
+(defun vue-htm ()
+  (let ((first-name (get-state "first-name"))
+        (second-name (get-state "second-name")))
+    `(div (:id "app")
+          ,(<-mutli-data "#app" (list first-name second-name)
+                   #'get-full-name
+                   ;; (lambda (name1 name2)
+                   ;;   (concat name1 " " name2))
+                   ))))
+
+(defun get-full-name (name1 name2)
+  (concat name1 " " name2))
+#+END_SRC
 *** Class 与 Style 绑定
 **** 绑定Class 对象和数组 语法
 #+BEGIN_SRC lisp
@@ -1880,7 +1935,7 @@ ReactDOM.render(
 
 #+END_SRC
 ***** COMMENT input
-#+BEGIN_SRC lisp
+#+BEGIN_SRC lisp :tangle yes
 ;; input binding
 (add-state "word" "hello")
 (defun vue-htm ()
@@ -1891,8 +1946,8 @@ ReactDOM.render(
           (p () ,(<-data "#app p" word)))))
   #+END_SRC
 ***** 
-***** click
-#+BEGIN_SRC lisp
+***** COMMENT click
+#+BEGIN_SRC lisp :tangle yes
 ;; click binding
 (add-state "message" "Hello Vue.js!")
 (defun vue-htm ()
