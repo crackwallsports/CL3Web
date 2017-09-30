@@ -17,6 +17,8 @@
                 :parenscript
                 ;; JSON
                 :jonathan
+                ;; Crypto
+                :cryptos
                 ;; Parse Real Number
                 :parse-number
                 ;; Regex
@@ -1643,17 +1645,17 @@ ReactDOM.render(
 ;; <div class="static"
 ;;     v-bind:class="{ active: isActive, 'text-danger': hasError }">
 ;; </div>
+(add-state "is-active" t)
+(add-state "has-error" nil)
 
-`(div (,(join-class "static"
-                    (<-data-class "div .static"
-                                  ('is-active "active")
-                                  ('has-error "text-danger")
-                                  ;; OR
-                                  'class-obj
-                                  ;; OR
-                                  'active-class
-                                  'error-class))))
-;; ?? "div" 定位
+(defun vue-htm ()
+  (let ((is-active (get-state "is-active"))
+        (has-error (get-state "has-error")))
+    `(div (,(join-class
+             "static"
+             (<-data-class "div.static"
+                           (list is-active "active")
+                           (list has-error "text-danger")))))))
 
 ;; Ins
 (if is-active "addClass" "removeClass")
@@ -1678,7 +1680,7 @@ ReactDOM.render(
                                   ))))
 #+END_SRC
 
-**** 绑定Class 对象和数组 语法
+**** 绑定style 对象和数组 语法
 #+BEGIN_SRC lisp
 ;; <div v-bind:style="{ color: activeColor, fontSize: fontSize + 'px' }"></div>
 ;; <div v-bind:style="styleObject"></div>
@@ -1915,6 +1917,29 @@ ReactDOM.render(
          (if val (setf res t-exp))
          (send-ins (list (make-ins tag `("html" ,(->html res))))))))
     (if val t-exp f-exp)))
+
+(defun <-data-attr (tag attr state &optional process)
+  (let ((val (state-val state)))
+    (if process
+        (setf val (funcall process (state-val state))))
+    (add-observer
+     state
+     tag
+     (lambda (val)
+       (send-ins (list
+                  (make-ins tag
+                            `("prop" (,(intern attr "KEYWORD")
+                                       ,(if process
+                                            (funcall process val)
+                                            val))))))))
+    val))
+
+
+
+(send-ins (list
+           (make-ins "#unit-y"
+                     `("attr" (,(intern "value" "KEYWORD")
+                                "30")))))
 #+END_SRC
 **** Binding Ex.
 ***** COMMENT if
@@ -1968,7 +1993,6 @@ ReactDOM.render(
                         :onkeyup ,(data-> "input" word)))
           (p () ,(<-data "#app p" word)))))
   #+END_SRC
-***** 
 ***** COMMENT click
 #+BEGIN_SRC lisp :tangle yes
 ;; click binding
@@ -1985,4 +2009,151 @@ ReactDOM.render(
 
 
   #+END_SRC
+***** Calc
+#+BEGIN_SRC lisp
+(add-state "result" 0)
+(add-state "operator" nil)
 
+(defun vue-htm ()
+  (let ((result (get-state "result"))
+        (operator (get-state "operator")))
+    `(div (:id "calc")
+          (span (:id "result")
+                ,(<-data "#result" result
+                         (lambda (val)
+                           (format nil "~D" val))))
+          (br)
+          ;; All Clear
+          (button (:onclick ,(data-> "click" operator "AC"
+                                     (lambda (val)
+                                       (change-state "result" 0)
+                                       nil)))
+                  "AC")
+          ;; Operator
+          ,@(loop for (s f) in '(("+" +) ("-" -) ("*" *) ("/" /))
+               collect `(button (:onclick ,(data-> "click" operator s
+                                                   (let ((func f)) operator
+                                                        (lambda (val) func))))
+                                ,s))
+          (br)
+          ;; Number
+          ,@(loop for i from 0 to 9
+               collect `(button (:onclick ,(data-> "click" result (format nil "#calc ~A" i)
+                                                   (let ((num i))
+                                                     (lambda (val)
+                                                       (let ((op (state-val operator)))
+                                                         (if op 
+                                                             (funcall op val num)
+                                                             num))))))
+                                ,i)))))
+
+;; (funcall (state-val (get-state "operator")) 3 2)
+
+
+#+END_SRC
+***** Conversion
+#+BEGIN_SRC lisp
+(add-state "unit-x" 0)
+(add-state "unit-y" 32)
+;; C = 5/9(F - 32)
+;; F = 9C/5 + 32
+(defun vue-htm ()
+  (let ((celsius (get-state "unit-x"))
+        (fahrenheit (get-state "unit-y")))
+    `(div (:id "conversion")
+          ;; Unit-x
+          (div ()
+               (label (:for "unit-x") "Celsius")
+               (br)
+               (input (:type "text" :id "unit-x"
+                             :value ,(<-data-attr "#unit-x" "value" celsius
+                                                  (lambda (val) (format nil "~F" val)))
+                             :onchange ,(data-> "input" celsius "celsius"
+                                                (lambda (val)
+                                                  (let ((res (parse-number val)))
+                                                    (setf (state-val fahrenheit) (+ (/ (* 9 res) 5.0) 32))
+                                                    res))))))
+          (span () " = ")
+          ;; Unit-y
+          (div ()
+               (label (:for "unit-y") "Fahrenheit")
+               (br)
+               (input (:type "text" :id "unit-y"
+                             :value ,(<-data-attr "#unit-y" "value" fahrenheit
+                                                  (lambda (val) (format nil "~F" val)))
+                             :onchange ,(data-> "input" fahrenheit "fahrenheit"
+                                                (lambda (val)
+                                                  (let ((res (parse-number val)))
+                                                    (setf (state-val celsius) (* (/ 5.0 9.0) (- res 32)))
+                                                    res)))))))))
+
+(clrhash *states*)
+(state-val (get-state "unit-x"))
+(state-val (get-state "unit-y"))
+
+#+END_SRC
+***** Cryptography
+#+BEGIN_SRC lisp
+(add-state "source" "")
+(add-state "result" "")
+(add-state "action" #'reverse)
+
+(defun vue-htm ()
+  (let ((source (get-state "source"))
+        (result (get-state "result"))
+        (action (get-state "action")))
+    `(div (:id "cryptography")
+          ;; Source
+          (textarea (:id "source" 
+                         :onblur ,(data-> "input" source "source"))
+                    ,(state-val source))
+          
+          ;; Actions
+          (div (:class "actions")
+               (select (:id "actions" :name "actions"
+                            :onchange ,(data-> "input" action "actions"
+                                               (lambda (val)
+                                                 (case-str val
+                                                   ("翻转" #'reverse)
+                                                   ("大写" #'string-upcase)
+                                                   ("MD5" #'cryptos:md5)
+                                                   ("SHA512" #'cryptos:sha512)
+                                                   ("base64" #'cryptos:to-base64)
+                                                   (t nil)))))
+                      ,@(mapcar (lambda (text)
+                                  `(option (:value ,text)
+                                           ,text))
+                                '("翻转" "大写" "MD5" "SHA512" "base64" "其它")))
+               ;; Reverse
+               (button (:onclick ,(data-> "click" result "reverse"
+                                          (lambda (val)
+                                            (declare (ignore val))
+                                            (if (state-val action)
+                                                (funcall (state-val action) (state-val source))))))
+                       "执行"))
+
+          ;; Result
+          (div (:class "result")
+               ;; (span () "-------- SOURCE --------")
+               ;; (pre (:id "show-source") ,(<-data "#show-source" source))
+               (span () "-------- RESULT --------")
+               (pre (:id "result") ,(<-data "#result" result))))))
+
+(clrhash *states*)
+(state-val (get-state "source"))
+(state-val (get-state "result"))
+(state-val (get-state "action"))
+
+(defun vue-css ()
+  `("#cryptography"
+    (:width "500px")
+    ("textarea" (:padding "5px"))
+    ("#source" (:width "100%" :height "100px"))
+    (".actions" (:padding "10px 0" :text-align "center"))
+    (".result" (:padding "10px auto")
+               ("span" (:display "block" :text-align "center")))
+    (pre (:white-space "pre-wrap" :word-wrap "break-word"
+                       :font-size "0.8em"
+                       :border "1px dashed"
+                       :padding "5px"))))
+#+END_SRC
