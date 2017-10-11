@@ -1782,9 +1782,13 @@ ReactDOM.render(
 (defmethod (setf state-val) (value (state state))
   (unless (equal value (slot-value state 'val))
     (setf (slot-value state 'val) value)
-    (maphash (lambda (k v)
-               (funcall v value))
-             (slot-value state 'obs))))
+    (call-observer state value)))
+
+(defmethod call-observer ((state state) value)
+  (maphash (lambda (k v)
+             (declare (ignore k))
+             (funcall v value))
+           (slot-value state 'obs)))
 
 (defmethod add-observer ((state state) tag process)
   (setf (gethash tag (slot-value state 'obs)) process))
@@ -1834,6 +1838,13 @@ ReactDOM.render(
                   (tag (getf json :|tag|)))
               (and stat tag
                    (setf (state-val stat) (preprocess stat tag (state-val stat)))))))
+         ("list"
+          (progn
+            (let ((stat (gethash (getf json :|stat|) *states*))
+                  (id (getf json :|val|))
+                  (tag (getf json :|tag|)))
+              (and stat tag
+                   (preprocess stat tag id)))))
          (t "")))
       (t))))
 
@@ -1855,6 +1866,14 @@ ReactDOM.render(
                              act "click"
                              stat stat
                              tag tag))))
+      (chain ws (send msg)))
+   `(defun change-list (obj stat tag)
+      (var msg (chain |json|
+                 (stringify (create
+                             act "list"
+                             stat stat
+                             tag tag
+                             val (chain ($ obj) (parent "li") (attr "id"))))))
       (chain ws (send msg)))))
 #+END_SRC
 
@@ -1874,6 +1893,12 @@ ReactDOM.render(
                    (progn 
                      (add-preprocess state tag preprocess)
                      (concat "someClick('" (state-name state) "', '" tag "')"))
+                   "")))
+    ("list" (progn
+               (if (and tag preprocess)
+                   (progn 
+                     (add-preprocess state tag preprocess)
+                     (concat "changeList(this, '" (state-name state) "', '" tag "')"))
                    "")))))
 
 ;; Model -> View
@@ -1936,10 +1961,10 @@ ReactDOM.render(
 
 
 
-(send-ins (list
-           (make-ins "#unit-y"
-                     `("attr" (,(intern "value" "KEYWORD")
-                                "30")))))
+;; (send-ins (list
+;;            (make-ins "#unit-y"
+;;                      `("attr" (,(intern "value" "KEYWORD")
+;;                                 "30")))))
 #+END_SRC
 **** Binding Ex.
 ***** COMMENT if
@@ -2009,6 +2034,96 @@ ReactDOM.render(
 
 
   #+END_SRC
+***** list
+#+BEGIN_SRC lisp
+;; List State : name val
+(defclass list-state (state)
+  ((fitems :initform (make-hash-table :test #'equal))))
+
+(defun make-list-state (name &optional val)
+  (make-instance 'list-state
+                 :name name
+                 :val (loop for item in val
+                         collect (make-state (format nil "~A" (random 100000))
+                                             item))))
+(defmethod add-fitem ((state state) tag f)
+  (setf (gethash tag (slot-value state 'fitems)) f))
+(defmethod rem-fitem ((state state) tag)
+  (remhash tag (slot-value state 'fitems)))
+
+
+(defmethod add-item ((state list-state) item)
+  (let ((child (make-state (format nil "~A" (random 100000))
+                           item)))
+    (push child (slot-value state 'val))
+    (maphash (lambda (tag f)
+               (send-ins (list
+                          (make-ins tag
+                                    `("prepend" ,(->html (funcall f child)))))))
+             (slot-value state 'fitems))))
+
+(defmethod rem-item ((state list-state) (name string))
+  (setf (slot-value state 'val) (remove-if (lambda (sname)
+                                             (equal sname name))
+                                           (state-val state) :key #'state-name))
+  (send-ins (list (make-ins (concat "#" name) `("remove" :null)))))
+
+(defun add-list-state (name val)
+  (setf (gethash name *states*) (make-list-state name val)))
+
+
+(add-state "text" "")
+(add-list-state "todos"
+                (list "看书"
+                      "写字"
+                      "锻炼"))
+
+(defun vue-htm ()
+  (let ((todos (get-state "todos"))
+        (text (gethash "text" *states*)))
+    `(div (:id "app-list")
+          (input (:type "text" :id "input-text"
+                        :onblur ,(data-> "input" text)))
+          (button (:onclick ,(data-> "list" todos "add-item"
+                                     (lambda (val)
+                                       (unless (equal "" (state-val text))
+                                         (add-item todos (state-val text))))))
+                  "添加")
+          (ol ()
+              ,@(<-list-data "#app-list ol" todos
+                             (lambda (todo)
+                               (let ((id (state-name todo)))
+                                 `(li (:id ,id)
+                                      (span () ,(<-data (concat "#" id " span") todo))
+                                      (span (:onclick ,(data-> "list" todos "rem-item"
+                                                               (lambda (val)
+                                                                 (rem-item todos val))))
+                                            "X")))))))))
+
+
+
+(defun <-list-data (tag state fitem &optional process)
+  (let ((val (state-val state)))
+    (if process
+        (setf val (funcall process (state-val state))))
+    (add-observer
+     state
+     tag
+     (lambda (val)
+       (send-ins (list
+                  (make-ins tag
+                            `("html" ,(->html (loop for todo in (if process
+                                                                    (funcall process val)
+                                                                    val)
+                                                 collect (funcall fitem todo)))))))))
+    (and fitem
+         (add-fitem state tag fitem)
+         (loop for todo in val
+            collect (funcall fitem todo)))))
+
+
+
+#+END_SRC
 ***** Calc
 #+BEGIN_SRC lisp
 (add-state "result" 0)
@@ -2124,8 +2239,8 @@ ReactDOM.render(
                                   `(option (:value ,text)
                                            ,text))
                                 '("翻转" "大写" "MD5" "SHA512" "base64" "其它")))
-               ;; Reverse
-               (button (:onclick ,(data-> "click" result "reverse"
+               ;; Action
+               (button (:onclick ,(data-> "click" result "action"
                                           (lambda (val)
                                             (declare (ignore val))
                                             (if (state-val action)
@@ -2139,11 +2254,6 @@ ReactDOM.render(
                (span () "-------- RESULT --------")
                (pre (:id "result") ,(<-data "#result" result))))))
 
-(clrhash *states*)
-(state-val (get-state "source"))
-(state-val (get-state "result"))
-(state-val (get-state "action"))
-
 (defun vue-css ()
   `("#cryptography"
     (:width "500px")
@@ -2156,4 +2266,10 @@ ReactDOM.render(
                        :font-size "0.8em"
                        :border "1px dashed"
                        :padding "5px"))))
+
+(clrhash *states*)
+(state-val (get-state "source"))
+(state-val (get-state "result"))
+(state-val (get-state "action"))
+
 #+END_SRC
